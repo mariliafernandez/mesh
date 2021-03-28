@@ -7,7 +7,7 @@ import OpenGL.GL as gl
 import OpenGL.GLUT as glut
 sys.path.append('../lib/')
 import utils as ut
-
+from ctypes import c_void_p
 
 win_width  = 800
 win_height = 600
@@ -21,21 +21,29 @@ VAO = None
 vertex_code = """
 #version 330 core
 layout (location = 0) in vec3 position;
+layout (location = 1) in vec3 color;
+
+out vec3 vColor;
+
+uniform mat4 transform;
 
 void main()
 {
-    gl_Position = vec4(position.x, position.y, position.z, 1.0);
+    gl_Position = transform * vec4(position, 1.0);
+    vColor = color;
 }
 """
 
 ## Fragment shader.
 fragment_code = """
 #version 330 core
+
+in vec3 vColor;
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    FragColor = vec4(vColor, 1.0f);
 } 
 """
 
@@ -49,7 +57,6 @@ def display():
 
     gl.glUseProgram(program)
     gl.glBindVertexArray(VAO)
-    # gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
 
     # Translation
     T = ut.matTranslate(-0.5, 0.5, 0.0)
@@ -67,7 +74,7 @@ def display():
     loc = gl.glGetUniformLocation(program, "transform")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
 
-    gl.glDrawElements(gl.GL_TRIANGLES, 6, gl.GL_UNSIGNED_INT, None)
+    gl.glDrawElements(gl.GL_TRIANGLES, 36, gl.GL_UNSIGNED_INT, None)
 
     glut.glutSwapBuffers()
 
@@ -110,15 +117,15 @@ def initData():
  # Set vertices.
     vertices = np.array([
         # coordinate     color
-        -0.5, -0.5, 0.5, 
-         0.5, -0.5, 0.5, 
-         0.5,  0.5, 0.5, 
-        -0.5,  0.5, 0.5, 
+        -0.5, -0.5, 0.5, 1.0, 0.0, 0.0,
+         0.5, -0.5, 0.5, 0.0, 1.0, 0.0,
+         0.5,  0.5, 0.5, 0.0, 0.0, 1.0,
+        -0.5,  0.5, 0.5, 1.0, 0.0, 0.0,
 
-        -0.5, -0.5, -0.5, 
-         0.5, -0.5, -0.5, 
-         0.5,  0.5, -0.5, 
-        -0.5,  0.5, -0.5, 
+        -0.5, -0.5, -0.5, 1.0, 0.0, 0.0,
+         0.5, -0.5, -0.5, 0.0, 1.0, 0.0,
+         0.5,  0.5, -0.5, 0.0, 0.0, 1.0,
+        -0.5,  0.5, -0.5, 1.0, 0.0, 0.0,
     ], dtype='float32')
 
     indices = np.array([
@@ -127,10 +134,10 @@ def initData():
         0, 1, 2,    # First Triangle
         2, 3, 0,    # Second Triangle
 
-        # # Back
+        # Back
         4, 5, 6,
         6, 7, 4,
-        
+
         # Left
         0, 3, 7,
         7, 4, 0,
@@ -163,11 +170,11 @@ def initData():
     gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, EBO)
     gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, gl.GL_STATIC_DRAW)
     
-
-
     # Set attributes.
-    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*vertices.itemsize, None)
     gl.glEnableVertexAttribArray(0)
+    gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*vertices.itemsize, c_void_p(3*vertices.itemsize))
+    gl.glEnableVertexAttribArray(1)
     
     # Unbind Vertex Array Object.
     gl.glBindVertexArray(0)
@@ -193,7 +200,7 @@ def main():
     glut.glutCreateWindow('Cube')
 
     gl.glEnable(gl.GL_DEPTH_TEST)
-    # gl.glDepthFunc(gl.GL_LESS)
+    gl.glDepthFunc(gl.GL_LESS)
 
     # Init vertex data for the cube
     initData()
