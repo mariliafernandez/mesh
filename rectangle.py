@@ -13,9 +13,9 @@ win_width  = 800
 win_height = 600
 
 program = None
-
-## Vertex array object.
 VAO = None
+
+M = np.identity(4, dtype='float32')
 
 ## Vertex shader.
 vertex_code = """
@@ -47,8 +47,6 @@ void main()
 } 
 """
 
-## Drawing function.
-#
 # Draws primitive.
 def display():
 
@@ -57,19 +55,6 @@ def display():
 
     gl.glUseProgram(program)
     gl.glBindVertexArray(VAO)
-
-    # Translation
-    T = ut.matTranslate(-0.5, 0.5, 0.0)
-
-    # Rotation around z
-    Rz = ut.matRotateX(np.radians(30.0))
-
-    # Scale.
-    S = ut.matScale(1.0, 1.0, 1.0)
-
-    # M = T*R*S
-    M = np.matmul(Rz,S)
-    M = np.matmul(T,M)
 
     loc = gl.glGetUniformLocation(program, "transform")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
@@ -90,42 +75,102 @@ def reshape(width,height):
     glut.glutPostRedisplay()
 
 
+def mouse(btn, state, x, y):
+    #  Does not work 
+    if btn == 3:    # Zoom in
+        translate(0.0, 0.0, -0.05)
+    elif btn == 4:    # Zoom out
+        translate(0.0, 0.0, 0.05)
 
+
+
+ global type_primitive
+
+    if key == b'1':
+        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+    elif key == b'2':
+        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
 # @param key Pressed key.
 # @param x Mouse x coordinate when key pressed.
 # @param y Mouse y coordinate when key pressed.
 def keyboard(key, x, y):
+    ## Transformations
 
-    global type_primitive
+    # Translate
+    elif key == b'a':   # Left
+        translate(-0.05, 0.0, 0.0)
+    elif key == b'd':   # Right
+        translate(0.05, 0.0, 0.0)
+    elif key == b'w':   # Up
+        translate(0.0, 0.05, 0.0)
+    elif key == b's':   # Down
+        translate(0.0, -0.05, 0.0)
+    
+    # Rotate
+    elif key == b'x':
+        rotate('x')
+    elif key == b'y':
+        rotate('y')
+    elif key == b'z':
+        rotate('z')
 
-    if key == b'\x1b'or key == b'q':
-        sys.exit( )
-    if key == b'1':
-        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-    if key == b'2':
-        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+    # Scale
+    elif key == b'+':
+        scale(1.05, 1.05, 1.05)
+    elif key == b'-':
+        scale(0.95, 0.95, 0.95)
 
     glut.glutPostRedisplay()
 
 
-# Defines the coordinates for vertices, creates the arrays for OpenGL.
+def translate(x, y, z):
+    global M
+
+    T = ut.matTranslate(x, y, z)
+
+    M = np.matmul(T,M)
+    glut.glutPostRedisplay()
+
+
+def scale(x, y, z):
+    global M
+
+    S = ut.matScale(x, y, z)
+
+    M = np.matmul(S,M)
+    glut.glutPostRedisplay()
+
+
+def rotate(move, angle=90.0):
+    global M
+
+    if move == 'x':
+        R = ut.matRotateX(np.radians(angle))
+    elif move == 'y':
+        R = ut.matRotateY(np.radians(angle))
+    elif move == 'z':
+        R = ut.matRotateZ(np.radians(angle))
+
+    M = np.matmul(R,M)
+    glut.glutPostRedisplay()
+
+
+
 def initData():
 
-    # Uses vertex arrays.
     global VAO
 
- # Set vertices.
     vertices = np.array([
-        # coordinate     color
-        -0.5, -0.5, 0.5, 1.0, 0.0, 0.0,
-         0.5, -0.5, 0.5, 0.0, 1.0, 0.0,
-         0.5,  0.5, 0.5, 0.0, 0.0, 1.0,
-        -0.5,  0.5, 0.5, 1.0, 0.0, 0.0,
+        # coordinate        color
+        -0.5, -0.5, 0.5,    1.0, 0.68, 0.74,
+         0.5, -0.5, 0.5,    0.63, 0.91, 0.9,
+         0.5,  0.5, 0.5,    0.98, 0.91, 0.78,
+        -0.5,  0.5, 0.5,    0.71, 0.97, 0.78,
 
-        -0.5, -0.5, -0.5, 1.0, 0.0, 0.0,
-         0.5, -0.5, -0.5, 0.0, 1.0, 0.0,
-         0.5,  0.5, -0.5, 0.0, 0.0, 1.0,
-        -0.5,  0.5, -0.5, 1.0, 0.0, 0.0,
+        -0.5, -0.5, -0.5,   0.63, 0.91, 0.9,
+         0.5, -0.5, -0.5,   1.0, 0.68, 0.74,
+         0.5,  0.5, -0.5,   0.98, 0.91, 0.78,
+        -0.5,  0.5, -0.5,   0.71, 0.97, 0.78,
     ], dtype='float32')
 
     indices = np.array([
@@ -180,8 +225,6 @@ def initData():
     gl.glBindVertexArray(0)
 
 
-
-# Compile shaders and create programs
 def initShaders():
 
     global program
@@ -189,7 +232,6 @@ def initShaders():
     program = ut.createShaderProgram(vertex_code, fragment_code)
 
 
-# Init GLUT and the window settings. Also, defines the callback functions used in the program
 def main():
 
     glut.glutInit()
@@ -202,15 +244,13 @@ def main():
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
 
-    # Init vertex data for the cube
     initData()
-    
-    # Create shaders
     initShaders()
 
     glut.glutReshapeFunc(reshape)
     glut.glutDisplayFunc(display)
     glut.glutKeyboardFunc(keyboard)
+    glut.glutMouseFunc(mouse)
 
     glut.glutMainLoop()
 
