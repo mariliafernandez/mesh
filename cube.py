@@ -47,7 +47,6 @@ void main()
 } 
 """
 
-# Draws primitive.
 def display():
 
     gl.glClearColor(0.2, 0.3, 0.3, 1.0)
@@ -64,9 +63,6 @@ def display():
     glut.glutSwapBuffers()
 
 
-
-# @param width New window width.
-# @param height New window height.
 def reshape(width,height):
 
     win_width = width
@@ -75,27 +71,18 @@ def reshape(width,height):
     glut.glutPostRedisplay()
 
 
-def mouse(btn, state, x, y):
-    #  Does not work 
-    if btn == 3:    # Zoom in
-        translate(0.0, 0.0, -0.05)
-    elif btn == 4:    # Zoom out
-        translate(0.0, 0.0, 0.05)
-
-
-
- global type_primitive
+def keyboard(key, x_mouse, y_mouse):
+    
+    global type_primitive
 
     if key == b'1':
         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
     elif key == b'2':
         gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-# @param key Pressed key.
-# @param x Mouse x coordinate when key pressed.
-# @param y Mouse y coordinate when key pressed.
-def keyboard(key, x, y):
-    ## Transformations
 
+
+    # Transformations
+    # 
     # Translate
     elif key == b'a':   # Left
         translate(-0.05, 0.0, 0.0)
@@ -141,14 +128,14 @@ def scale(x, y, z):
     glut.glutPostRedisplay()
 
 
-def rotate(move, angle=90.0):
+def rotate(axis, angle=10.0):
     global M
 
-    if move == 'x':
+    if axis == 'x':
         R = ut.matRotateX(np.radians(angle))
-    elif move == 'y':
+    elif axis == 'y':
         R = ut.matRotateY(np.radians(angle))
-    elif move == 'z':
+    elif axis == 'z':
         R = ut.matRotateZ(np.radians(angle))
 
     M = np.matmul(R,M)
@@ -174,7 +161,6 @@ def initData():
     ], dtype='float32')
 
     indices = np.array([
-        
         # Front
         0, 1, 2,    # First Triangle
         2, 3, 0,    # Second Triangle
@@ -228,7 +214,6 @@ def initData():
 def initShaders():
 
     global program
-
     program = ut.createShaderProgram(vertex_code, fragment_code)
 
 
@@ -250,7 +235,6 @@ def main():
     glut.glutReshapeFunc(reshape)
     glut.glutDisplayFunc(display)
     glut.glutKeyboardFunc(keyboard)
-    glut.glutMouseFunc(mouse)
 
     glut.glutMainLoop()
 
