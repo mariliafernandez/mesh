@@ -17,10 +17,11 @@ program = None
 VAO = None
 
 M = np.identity(4, dtype='float32')
-count_vertices = 0
 fovy = np.radians(60)
+count_vertices = 0
 range_y = 0
-
+line = False
+mode = ''
 
 ## Vertex shader.
 vertex_code = """
@@ -61,8 +62,8 @@ def display():
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
 
     # View
-    z_near = -range_y/np.tan(fovy)
-    view = ut.matTranslate(0.0, 0.0, z_near)
+    z_near = range_y/np.tan(fovy)
+    view = ut.matTranslate(0.0, 0.0, -z_near-1)
     loc = gl.glGetUniformLocation(program, "view")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
 
@@ -84,62 +85,99 @@ def reshape(width,height):
     gl.glViewport(0, 0, width, height)
     glut.glutPostRedisplay()
 
+def switch_view(line):
+    if line:
+        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
+    else:
+        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
+    
+    glut.glutPostRedisplay()
+
+
+def special_keyboard(key, x_mouse, y_mouse):
+    handle_transform(key)
 
 def keyboard(key, x_mouse, y_mouse):
     
-    global type_primitive
-
-    if key == b'1':
-        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_LINE)
-    elif key == b'2':
-        gl.glPolygonMode(gl.GL_FRONT_AND_BACK, gl.GL_FILL)
-
-
-    # Transformations
-    # 
-    # Translate
-    elif key == b'a':   # Left
-        translate(-0.05, 0.0, 0.0)
-    elif key == b'd':   # Right
-        translate(0.05, 0.0, 0.0)
-    elif key == b'w':   # Up
-        translate(0.0, 0.05, 0.0)
-    elif key == b's':   # Down
-        translate(0.0, -0.05, 0.0)
+    global type_primitive, line, mode
     
-    # Rotate
-    elif key == b'x':
-        rotate('x')
-    elif key == b'y':
-        rotate('y')
-    elif key == b'z':
-        rotate('z')
+    if key == b't':
+        mode = 'translate'
+        print('translate')
+    elif key == b'r':
+        mode='rotate'
+        print('rotate')
+    elif key == b'e':
+        mode='scale'
+        print('scale')
+    elif key == b'v':
+        line = not line
+        switch_view(line)
+    else:
+        handle_transform(key)
+    
 
-    # Scale
-    elif key == b'+':
-        scale(1.05, 1.05, 1.05)
-    elif key == b'-':
-        scale(0.95, 0.95, 0.95)
+
+def handle_transform(key_pressed):
+
+    if mode == 'translate':
+        if key_pressed ==  glut.GLUT_KEY_UP:
+            translate(0.0, 0.05, 0.0)
+        elif key_pressed == glut.GLUT_KEY_DOWN:
+            translate(0.0, -0.05, 0.0)
+        elif key_pressed == glut.GLUT_KEY_RIGHT:
+            translate(0.05, 0.0, 0.0)
+        elif key_pressed == glut.GLUT_KEY_LEFT:
+            translate(-0.05, 0.0, 0.0)
+        elif key_pressed == b'a':
+            translate(0.0, 0.0, 0.5)
+        elif key_pressed == b'd':
+            translate(0.0, 0.0, -0.5)
+
+    elif mode == 'rotate':
+        angle = 10.0
+        if key_pressed == glut.GLUT_KEY_UP:
+            rotate('x', angle)
+        elif key_pressed == glut.GLUT_KEY_DOWN:
+            rotate('x', -angle)
+        elif key_pressed == glut.GLUT_KEY_RIGHT:
+            rotate('y', angle)
+        elif key_pressed == glut.GLUT_KEY_LEFT:
+            rotate('y', -angle)
+        elif key_pressed == b'a':
+            rotate('z', angle)
+        elif key_pressed == b'd':
+            rotate('z', -angle)
+    
+    elif mode == 'scale':
+        coeff=0.05
+
+        if key_pressed == glut.GLUT_KEY_UP:
+            scale(1, 1+coeff, 1)
+        elif key_pressed == glut.GLUT_KEY_DOWN:
+            scale(1, 1-coeff, 1)
+        elif key_pressed == glut.GLUT_KEY_RIGHT:
+            scale(1+coeff, 1, 1)
+        elif key_pressed == glut.GLUT_KEY_LEFT:
+            scale(1-coeff, 1, 1)
+        elif key_pressed == b'a':
+            scale(1, 1, 1+coeff)
+        elif key_pressed == b'd':
+            scale(1, 1, 1-coeff)
 
     glut.glutPostRedisplay()
 
 
 def translate(x, y, z):
     global M
-
     T = ut.matTranslate(x, y, z)
-
     M = np.matmul(T,M)
-    glut.glutPostRedisplay()
 
 
 def scale(x, y, z):
     global M
-
     S = ut.matScale(x, y, z)
-
     M = np.matmul(S,M)
-    glut.glutPostRedisplay()
 
 
 def rotate(axis, angle=10.0):
@@ -153,7 +191,6 @@ def rotate(axis, angle=10.0):
         R = ut.matRotateZ(np.radians(angle))
 
     M = np.matmul(R,M)
-    glut.glutPostRedisplay()
 
 
 def define_cube():
@@ -200,7 +237,6 @@ def define_cube():
     return vertices
 
 
-
 def read_obj(file_name):
     global count_vertices
     global range_y
@@ -240,9 +276,9 @@ def read_obj(file_name):
         elements = line.split()[1:]
         for el in elements:
             if '/' in el:
-                v = el.split(split_char)[0]
-                vt = el.split(split_char)[1]
-                vn = el.split(split_char)[2]
+                v = el.split('/')[0]
+                vt = el.split('/')[1]
+                vn = el.split('/')[2]
             
                 if v:
                     v_list.append(int(v))
@@ -266,7 +302,7 @@ def initData():
 
     global VAO
     
-    data = read_obj('diamond')
+    data = read_obj('cube')
 
     vertices = data['v']
     indices = data['f_v']
@@ -317,6 +353,7 @@ def main():
     glut.glutReshapeFunc(reshape)
     glut.glutDisplayFunc(display)
     glut.glutKeyboardFunc(keyboard)
+    glut.glutSpecialFunc(special_keyboard)
 
     glut.glutMainLoop()
 
