@@ -200,9 +200,9 @@ def matPerspective(fovy, aspect, n, f):
 
     P[0,0] = 1.0/(aspect*tan)
     P[1,1] = 1.0/tan
-    P[2,2] = -(f+n)/(f-n);
-    P[2,3] = - (2.0*f*n)/(f-n);
-    P[3,2] = -1.0;
+    P[2,2] = -(f+n)/(f-n)
+    P[2,3] = - (2.0*f*n)/(f-n)
+    P[3,2] = -1.0
 
     return P
 

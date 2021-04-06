@@ -5,6 +5,7 @@ import ctypes
 import numpy as np
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
+import re
 sys.path.append('../lib/')
 import utils as ut
 from ctypes import c_void_p
@@ -16,34 +17,34 @@ program = None
 VAO = None
 
 M = np.identity(4, dtype='float32')
+count_vertices = 0
+fovy = np.radians(60)
+range_y = 0
+
 
 ## Vertex shader.
 vertex_code = """
 #version 330 core
 layout (location = 0) in vec3 position;
-layout (location = 1) in vec3 color;
-
-out vec3 vColor;
 
 uniform mat4 transform;
+uniform mat4 projection;
+uniform mat4 view;
 
 void main()
 {
-    gl_Position = transform * vec4(position, 1.0);
-    vColor = color;
+    gl_Position = projection * view * transform * vec4(position, 1.0);
 }
 """
 
 ## Fragment shader.
 fragment_code = """
 #version 330 core
-
-in vec3 vColor;
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = vec4(vColor, 1.0f);
+    FragColor = vec4(0.7f, 0.7f, 0.7f, 1.0f);
 } 
 """
 
@@ -52,13 +53,26 @@ def display():
     gl.glClearColor(0.2, 0.3, 0.3, 1.0)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
-    gl.glUseProgram(program)
     gl.glBindVertexArray(VAO)
+    gl.glUseProgram(program)
 
+    # Transformations
     loc = gl.glGetUniformLocation(program, "transform")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
 
-    gl.glDrawElements(gl.GL_TRIANGLES, 36, gl.GL_UNSIGNED_INT, None)
+    # View
+    z_near = -range_y/np.tan(fovy)
+    view = ut.matTranslate(0.0, 0.0, z_near)
+    loc = gl.glGetUniformLocation(program, "view")
+    gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
+
+    # Projection
+    #projection = ut.matOrtho(-1, 1, -2, 2, 0.1, 10)
+    projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 150)
+    loc = gl.glGetUniformLocation(program, "projection")
+    gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, projection.transpose())
+
+    gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
 
     glut.glutSwapBuffers()
 
@@ -142,11 +156,7 @@ def rotate(axis, angle=10.0):
     glut.glutPostRedisplay()
 
 
-
-def initData():
-
-    global VAO
-
+def define_cube():
     vertices = np.array([
         # coordinate        color
         -0.5, -0.5, 0.5,    1.0, 0.68, 0.74,
@@ -186,7 +196,81 @@ def initData():
         5, 4, 0,
 
     ], dtype="uint32")
+
+    return vertices
+
+
+
+def read_obj(file_name):
+    global count_vertices
+    global range_y
+
+    data = dict()
+
+    with open(f'files/{file_name}.obj') as obj:
+        r = obj.read()
+
+    v_re = re.compile('v .*')
+    vn_re = re.compile('vn .*')
+    f_re = re.compile('f .*')
+
+    v_lines = v_re.findall(r)
+    f_lines = f_re.findall(r)
+
+    # Read vertices
+    vertices = list()
+    for line in v_lines:
+        elements = line.split()[1:]
+        for el in elements:
+            vertices.append(float(el))
+
+    data['v'] = np.asarray(vertices, dtype='float32')
+    max_v = np.max(data['v'])
+    min_v = np.min(data['v'])
+    range_y = max_v - min_v
+
+
+
+    # Read faces
+    v_list = list()
+    vt_list = list()
+    vn_list = list()
+
+    for line in f_lines:
+        elements = line.split()[1:]
+        for el in elements:
+            if '/' in el:
+                v = el.split(split_char)[0]
+                vt = el.split(split_char)[1]
+                vn = el.split(split_char)[2]
+            
+                if v:
+                    v_list.append(int(v))
+                if vt:
+                    vt_list.append(int(vt))
+                if vn:
+                    vn_list.append(int(vn))
+            
+            else: v_list.append(int(el))
+            
     
+    count_vertices = len(v_list)
+    data['f_v'] = np.asarray(v_list, dtype='uint32')
+    data['f_vt'] = np.asarray(vt_list, dtype='uint32')
+    data['f_vn'] = np.asarray(vn_list, dtype='uint32')
+
+    return data
+
+
+def initData():
+
+    global VAO
+    
+    data = read_obj('diamond')
+
+    vertices = data['v']
+    indices = data['f_v']
+
     # Vertex array.
     VAO = gl.glGenVertexArrays(1)
     gl.glBindVertexArray(VAO)
@@ -202,10 +286,8 @@ def initData():
     gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, gl.GL_STATIC_DRAW)
     
     # Set attributes.
-    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*vertices.itemsize, None)
+    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
     gl.glEnableVertexAttribArray(0)
-    gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*vertices.itemsize, c_void_p(3*vertices.itemsize))
-    gl.glEnableVertexAttribArray(1)
 
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
@@ -227,9 +309,7 @@ def main():
     glut.glutInitContextProfile(glut.GLUT_CORE_PROFILE)
     glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH)
     glut.glutInitWindowSize(win_width,win_height)
-    glut.glutCreateWindow('Cube')
-
-    
+    glut.glutCreateWindow('OBJ Viewer')
 
     initData()
     initShaders()
