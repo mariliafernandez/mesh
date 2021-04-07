@@ -5,23 +5,27 @@ import ctypes
 import numpy as np
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
+import argparse
 import re
 sys.path.append('../lib/')
 import utils as ut
+from pathlib import Path
 from ctypes import c_void_p
+
+M = np.identity(4, dtype='float32')
 
 win_width  = 800
 win_height = 600
 
-program = None
-VAO = None
-
-M = np.identity(4, dtype='float32')
 fovy = np.radians(60)
 count_vertices = 0
 range_y = 0
+
+filepath = None
+program = None
 line = False
-mode = ''
+mode = None
+VAO = None
 
 ## Vertex shader.
 vertex_code = """
@@ -62,18 +66,19 @@ def display():
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
 
     # View
-    z_near = range_y/np.tan(fovy)
-    view = ut.matTranslate(0.0, 0.0, -z_near-1)
+    z_near = range_y*2.0/np.tan(fovy)
+    view = ut.matTranslate(0.0, 0.0, -z_near-3)
     loc = gl.glGetUniformLocation(program, "view")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
 
     # Projection
-    #projection = ut.matOrtho(-1, 1, -2, 2, 0.1, 10)
-    projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 150)
+    projection = ut.matOrtho(-range_y*2.0, range_y*2.0, -range_y*2.0, range_y*2.0, 0.1, 100)
+    # projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 150)
     loc = gl.glGetUniformLocation(program, "projection")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, projection.transpose())
 
-    gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
+
+    gl.glDrawElements(gl.GL_TRIANGLES, 18, gl.GL_UNSIGNED_INT, None)
 
     glut.glutSwapBuffers()
 
@@ -96,6 +101,7 @@ def switch_view(line):
 
 def special_keyboard(key, x_mouse, y_mouse):
     handle_transform(key)
+
 
 def keyboard(key, x_mouse, y_mouse):
     
@@ -237,13 +243,13 @@ def define_cube():
     return vertices
 
 
-def read_obj(file_name):
+def read_obj(filepath):
     global count_vertices
     global range_y
 
     data = dict()
 
-    with open(f'files/{file_name}.obj') as obj:
+    with open(filepath) as obj:
         r = obj.read()
 
     v_re = re.compile('v .*')
@@ -251,6 +257,7 @@ def read_obj(file_name):
     f_re = re.compile('f .*')
 
     v_lines = v_re.findall(r)
+    vn_lines = vn_re.findall(r)
     f_lines = f_re.findall(r)
 
     # Read vertices
@@ -265,6 +272,15 @@ def read_obj(file_name):
     min_v = np.min(data['v'])
     range_y = max_v - min_v
 
+
+    # Read vertices normal
+    vertices_n = list()
+    for line in vn_lines:
+        elements = line.split()[1:]
+        for el in elements:
+            vertices_n.append(float(el))
+
+    data['vn'] = np.asarray(vertices_n, dtype='float32')
 
 
     # Read faces
@@ -298,32 +314,42 @@ def read_obj(file_name):
     return data
 
 
-def initData():
+def initData(filepath):
 
     global VAO
     
-    data = read_obj('cube')
+    data = read_obj(filepath)
+    vertex = {}
 
     vertices = data['v']
+    normals = data['vn']
     indices = data['f_v']
 
     # Vertex array.
     VAO = gl.glGenVertexArrays(1)
     gl.glBindVertexArray(VAO)
 
-    # Vertex buffer
+    # Vertices 
     VBO = gl.glGenBuffers(1)
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, VBO)
     gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
     
-    # Element Buffer Object 
+    # Normals 
+    NBO = gl.glGenBuffers(1)
+    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, NBO)
+    gl.glBufferData(gl.GL_ARRAY_BUFFER, normals.nbytes, normals, gl.GL_STATIC_DRAW)
+
+    # Elements 
     EBO = gl.glGenBuffers(1)
     gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, EBO)
     gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, gl.GL_STATIC_DRAW)
     
+
     # Set attributes.
-    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+    # gl.glEnableClientState(gl.GL_VERTEX_ARRAY)
     gl.glEnableVertexAttribArray(0)
+    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
 
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
@@ -332,22 +358,23 @@ def initData():
     gl.glBindVertexArray(0)
 
 
+
 def initShaders():
 
     global program
     program = ut.createShaderProgram(vertex_code, fragment_code)
 
 
-def main():
+def main(filepath):
 
     glut.glutInit()
     glut.glutInitContextVersion(3, 3)
     glut.glutInitContextProfile(glut.GLUT_CORE_PROFILE)
     glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH)
     glut.glutInitWindowSize(win_width,win_height)
-    glut.glutCreateWindow('OBJ Viewer')
+    glut.glutCreateWindow('M E S H')
 
-    initData()
+    initData(filepath)
     initShaders()
 
     glut.glutReshapeFunc(reshape)
@@ -358,4 +385,14 @@ def main():
     glut.glutMainLoop()
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filepath')
+    args = parser.parse_args()
+
+    filepath = Path(args.filepath)
+    
+    if filepath.suffix != '.obj' or not filepath.is_file():
+        print('Not a valid .obj file')
+
+    else:
+        main(filepath)
