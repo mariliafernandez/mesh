@@ -12,20 +12,41 @@ import utils as ut
 from pathlib import Path
 from ctypes import c_void_p
 
+# Initial Transform Matrix
 M = np.identity(4, dtype='float32')
 
+# Window size
 win_width  = 800
 win_height = 600
 
+# Field of view
 fovy = np.radians(60)
+
+# Total vertices to be drawn
 count_vertices = 0
+
+# Height of obj
 range_y = 0
+
+
+# Limits of obj file
+x_min = sys.float_info.max
+y_min = sys.float_info.max
+z_min = sys.float_info.max
+
+x_max = sys.float_info.min
+y_max = sys.float_info.min
+z_max = sys.float_info.min
+
+
 
 filepath = None
 program = None
 line = False
 mode = None
 VAO = None
+
+
 
 ## Vertex shader.
 vertex_code = """
@@ -65,20 +86,23 @@ def display():
     loc = gl.glGetUniformLocation(program, "transform")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
 
+    print(x_max, x_min, y_max, y_min, z_max, z_min)
+
     # View
-    z_near = range_y*2.0/np.tan(fovy)
-    view = ut.matTranslate(0.0, 0.0, -z_near-3)
+    z_near = z_min - (y_max-y_min)*1.5/np.tan(fovy)
+    print(z_near)
+    view = ut.matTranslate(0.0, 0.0, z_near-1)
     loc = gl.glGetUniformLocation(program, "view")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
 
     # Projection
-    projection = ut.matOrtho(-range_y*2.0, range_y*2.0, -range_y*2.0, range_y*2.0, 0.1, 100)
-    # projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 150)
+    # projection = ut.matOrtho(-range_y*2.0, range_y*2.0, -range_y*2.0, range_y*2.0, 0.1, 100)
+    projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 600)
     loc = gl.glGetUniformLocation(program, "projection")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, projection.transpose())
 
 
-    gl.glDrawElements(gl.GL_TRIANGLES, 18, gl.GL_UNSIGNED_INT, None)
+    gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
 
     glut.glutSwapBuffers()
 
@@ -125,23 +149,24 @@ def keyboard(key, x_mouse, y_mouse):
 
 
 def handle_transform(key_pressed):
+    unit = 0.01*max(x_max, y_max, z_max)
 
     if mode == 'translate':
         if key_pressed ==  glut.GLUT_KEY_UP:
-            translate(0.0, 0.05, 0.0)
+            translate(0.0, unit, 0.0)
         elif key_pressed == glut.GLUT_KEY_DOWN:
-            translate(0.0, -0.05, 0.0)
+            translate(0.0, -unit, 0.0)
         elif key_pressed == glut.GLUT_KEY_RIGHT:
-            translate(0.05, 0.0, 0.0)
+            translate(unit, 0.0, 0.0)
         elif key_pressed == glut.GLUT_KEY_LEFT:
-            translate(-0.05, 0.0, 0.0)
+            translate(-unit, 0.0, 0.0)
         elif key_pressed == b'a':
-            translate(0.0, 0.0, 0.5)
+            translate(0.0, 0.0, unit)
         elif key_pressed == b'd':
-            translate(0.0, 0.0, -0.5)
+            translate(0.0, 0.0, -unit)
 
     elif mode == 'rotate':
-        angle = 10.0
+        angle = 1.0
         if key_pressed == glut.GLUT_KEY_UP:
             rotate('x', angle)
         elif key_pressed == glut.GLUT_KEY_DOWN:
@@ -156,7 +181,7 @@ def handle_transform(key_pressed):
             rotate('z', -angle)
     
     elif mode == 'scale':
-        coeff=0.05
+        coeff=0.01
 
         if key_pressed == glut.GLUT_KEY_UP:
             scale(1, 1+coeff, 1)
@@ -244,8 +269,7 @@ def define_cube():
 
 
 def read_obj(filepath):
-    global count_vertices
-    global range_y
+    global count_vertices, range_y, x_min, y_min, z_min, x_max, y_max, z_max
 
     data = dict()
 
@@ -264,8 +288,32 @@ def read_obj(filepath):
     vertices = list()
     for line in v_lines:
         elements = line.split()[1:]
-        for el in elements:
-            vertices.append(float(el))
+        # for el in elements:
+        x = float(elements[0])
+        y = float(elements[1])
+        z = float(elements[2])
+
+        # print(x, y, z)
+
+        if x > x_max:
+            x_max = x
+        if x < x_min:
+            x_min = x
+        if y > y_max:
+            y_max = y
+        if y < y_min:
+            y_min = y
+        if z > z_max:
+            z_max = z
+        if z < z_min:
+            z_min = z
+
+        vertices.append(x)
+        vertices.append(y)
+        vertices.append(z)
+
+
+
 
     data['v'] = np.asarray(vertices, dtype='float32')
     max_v = np.max(data['v'])
@@ -297,11 +345,11 @@ def read_obj(filepath):
                 vn = el.split('/')[2]
             
                 if v:
-                    v_list.append(int(v))
+                    v_list.append(int(v)-1)
                 if vt:
-                    vt_list.append(int(vt))
+                    vt_list.append(int(vt)-1)
                 if vn:
-                    vn_list.append(int(vn))
+                    vn_list.append(int(vn)-1)
             
             else: v_list.append(int(el))
             
@@ -335,9 +383,9 @@ def initData(filepath):
     gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
     
     # Normals 
-    NBO = gl.glGenBuffers(1)
-    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, NBO)
-    gl.glBufferData(gl.GL_ARRAY_BUFFER, normals.nbytes, normals, gl.GL_STATIC_DRAW)
+    # NBO = gl.glGenBuffers(1)
+    # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, NBO)
+    # gl.glBufferData(gl.GL_ARRAY_BUFFER, normals.nbytes, normals, gl.GL_STATIC_DRAW)
 
     # Elements 
     EBO = gl.glGenBuffers(1)
