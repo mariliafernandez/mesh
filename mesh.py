@@ -19,7 +19,7 @@ M = np.identity(4, dtype='float32')
 
 # Window size
 win_width  = 800
-win_height = 600
+win_height = 800
 
 # Field of view
 fovy = np.radians(60)
@@ -81,10 +81,10 @@ def display():
     print(M)
 
     # View
-    # z_near = z_min + (y_max-y_min)/np.tan(fovy)
-    z_near = (y_max-y_min)*4.0/np.tan(fovy) # Funciona pro cubo
+    # z_near = z_min - (y_max-y_min)*2.0/np.tan(fovy)
+    z_near = (y_max-y_min)*3.0/np.tan(fovy) # Funciona pro cubo
 
-    print(z_near)
+    print(z_near, z_min)
     view = ut.matTranslate(0.0, 0.0, z_near) 
     # view = ut.matTranslate(0.0, 0.0, z_near-1)
 
@@ -283,7 +283,6 @@ def define_cube():
     ], dtype="uint32")
 
     return vertices
-
 
 
 def initData(filepath):
