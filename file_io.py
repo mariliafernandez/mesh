@@ -142,4 +142,4 @@ def read_faces(r):
 
 def find_center(box_limits):
     [x1, x2, y1, y2, z1, z2] = box_limits
-    return (x2-x1)/2, (y2-y1)/2, (z2-z1)/2
+    return (x2+x1)/2, (y2+y1)/2, (z2+z1)/2

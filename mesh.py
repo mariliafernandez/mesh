@@ -77,9 +77,9 @@ def display():
 
 
     [x_max, x_min, y_max, y_min, z_max, z_min] = box_limits
-    print(center)
-
+    print(count_vertices)
     print(M)
+
     # View
     # z_near = z_min + (y_max-y_min)/np.tan(fovy)
     z_near = (y_max-y_min)*4.0/np.tan(fovy) # Funciona pro cubo
