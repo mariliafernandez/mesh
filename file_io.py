@@ -42,6 +42,8 @@ def read_normal(r):
 
     return np.asarray(vertices_n, dtype='float32')
 
+def normalize(v):
+    return v/np.max(v)
 
 
 def read_vertices(r):
@@ -85,9 +87,13 @@ def read_vertices(r):
         if z < z_min:
             z_min = z
 
+    vertices = np.asarray(vertices, dtype='float32')
+    v_max = np.max(vertices)
+    vertices = vertices/v_max
+
     v_data = {
         "v": np.asarray(vertices, dtype='float32'),
-        "box": [ x_min, x_max, y_min, y_max, z_min, z_max]
+        "box": [ x_min/v_max, x_max/v_max, y_min/v_max, y_max/v_max, z_min/v_max, z_max/v_max]
     }
 
     return v_data
@@ -119,7 +125,7 @@ def read_faces(r):
                 # if vn:
                 #     vn_list.append(int(vn)-1)
             
-            else: v_list.append(int(el))
+            else: v_list.append(int(el)-1)
             
     
     count_vertices = len(v_list)

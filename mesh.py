@@ -27,8 +27,8 @@ fovy = np.radians(60)
 # Total vertices to be drawn
 count_vertices = 0
 box_limits = None
-obj_center = None
 center = [0, 0, 0]
+angle_axis = [0, 0, 0]
 
 filepath = None
 program = None
@@ -77,6 +77,8 @@ def display():
 
 
     [x_max, x_min, y_max, y_min, z_max, z_min] = box_limits
+    print(center)
+
     print(M)
     # View
     # z_near = z_min + (y_max-y_min)/np.tan(fovy)
@@ -207,14 +209,16 @@ def translate(x, y, z):
 
 def scale(x, y, z):
     global M
-    x, y, z = center[0], center[1], center[2]
+    x_center, y_center, z_center = center[0], center[1], center[2]
 
-    translate(-x, -y, -z)
+    translate(-x_center, -y_center, -z_center)
 
     S = ut.matScale(x, y, z)
     M = np.matmul(S,M)
 
-    translate(x, y, z)
+    translate( x_center, y_center, z_center)
+
+
 
 def rotate(axis, angle=10.0):
     global M
@@ -224,10 +228,13 @@ def rotate(axis, angle=10.0):
     
     if axis == 'x':
         R = ut.matRotateX(np.radians(angle))
+        angle_axis[0] += angle
     elif axis == 'y':
         R = ut.matRotateY(np.radians(angle))
+        angle_axis[1] += angle
     elif axis == 'z':
         R = ut.matRotateZ(np.radians(angle))
+        angle_axis[2] += angle
 
     M = np.matmul(R,M)
 
@@ -281,21 +288,28 @@ def define_cube():
 
 def initData(filepath):
 
-    global VAO, box_limits, count_vertices, M
+    global VAO, box_limits, count_vertices, M, center
     
     file_data = io.read_obj(filepath)
 
-    [x_center, y_center, z_center] = file_data['center']
+    center = file_data['center']
+    [x, y, z] = center 
+
+    print(center)
+
     box_limits = file_data['vertices']['box']
     vertices = file_data['vertices']['v']
     indices = file_data['faces']['v']
     count_vertices = file_data['faces']['n']
 
-    print(x_center, y_center, z_center)
-
     # Define Initial Matrix
-    T = ut.matTranslate(-x_center, -y_center, -z_center)
+    T = ut.matTranslate(-x, -y, -z)
     M = np.matmul(T,M)
+
+    center[0] -= x
+    center[1] -= y
+    center[2] -= z
+
 
     # Vertex array.
     VAO = gl.glGenVertexArrays(1)
