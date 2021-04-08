@@ -6,11 +6,13 @@ import numpy as np
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
 import argparse
-import re
 sys.path.append('../lib/')
 import utils as ut
 from pathlib import Path
 from ctypes import c_void_p
+
+# from . import io
+import file_io as io
 
 # Initial Transform Matrix
 M = np.identity(4, dtype='float32')
@@ -24,28 +26,15 @@ fovy = np.radians(60)
 
 # Total vertices to be drawn
 count_vertices = 0
-
-# Height of obj
-range_y = 0
-
-
-# Limits of obj file
-x_min = sys.float_info.max
-y_min = sys.float_info.max
-z_min = sys.float_info.max
-
-x_max = sys.float_info.min
-y_max = sys.float_info.min
-z_max = sys.float_info.min
-
-
+box_limits = None
+obj_center = None
+center = [0, 0, 0]
 
 filepath = None
 program = None
 line = False
 mode = None
 VAO = None
-
 
 
 ## Vertex shader.
@@ -86,18 +75,23 @@ def display():
     loc = gl.glGetUniformLocation(program, "transform")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
 
-    print(x_max, x_min, y_max, y_min, z_max, z_min)
 
+    [x_max, x_min, y_max, y_min, z_max, z_min] = box_limits
+    print(M)
     # View
-    z_near = z_min - (y_max-y_min)*1.5/np.tan(fovy)
+    # z_near = z_min + (y_max-y_min)/np.tan(fovy)
+    z_near = (y_max-y_min)*4.0/np.tan(fovy) # Funciona pro cubo
+
     print(z_near)
-    view = ut.matTranslate(0.0, 0.0, z_near-1)
+    view = ut.matTranslate(0.0, 0.0, z_near) 
+    # view = ut.matTranslate(0.0, 0.0, z_near-1)
+
     loc = gl.glGetUniformLocation(program, "view")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
 
     # Projection
-    # projection = ut.matOrtho(-range_y*2.0, range_y*2.0, -range_y*2.0, range_y*2.0, 0.1, 100)
-    projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 600)
+    # projection = ut.matOrtho(x_min*1.5, x_max*1.5, y_min*1.5, y_max*1.5, 0.1, 500)
+    projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 300)
     loc = gl.glGetUniformLocation(program, "projection")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, projection.transpose())
 
@@ -145,10 +139,11 @@ def keyboard(key, x_mouse, y_mouse):
         switch_view(line)
     else:
         handle_transform(key)
+
     
 
-
 def handle_transform(key_pressed):
+    x_max, y_max, z_max = box_limits[1], box_limits[3], box_limits[5]
     unit = 0.01*max(x_max, y_max, z_max)
 
     if mode == 'translate':
@@ -200,20 +195,33 @@ def handle_transform(key_pressed):
 
 
 def translate(x, y, z):
-    global M
+    global M, center
+
     T = ut.matTranslate(x, y, z)
     M = np.matmul(T,M)
+    
+    center[0] += x
+    center[1] += y
+    center[2] += z
 
 
 def scale(x, y, z):
     global M
+    x, y, z = center[0], center[1], center[2]
+
+    translate(-x, -y, -z)
+
     S = ut.matScale(x, y, z)
     M = np.matmul(S,M)
 
+    translate(x, y, z)
 
 def rotate(axis, angle=10.0):
     global M
+    x, y, z = center[0], center[1], center[2]
 
+    translate(-x, -y, -z)
+    
     if axis == 'x':
         R = ut.matRotateX(np.radians(angle))
     elif axis == 'y':
@@ -222,6 +230,8 @@ def rotate(axis, angle=10.0):
         R = ut.matRotateZ(np.radians(angle))
 
     M = np.matmul(R,M)
+
+    translate(x, y, z)
 
 
 def define_cube():
@@ -268,110 +278,24 @@ def define_cube():
     return vertices
 
 
-def read_obj(filepath):
-    global count_vertices, range_y, x_min, y_min, z_min, x_max, y_max, z_max
-
-    data = dict()
-
-    with open(filepath) as obj:
-        r = obj.read()
-
-    v_re = re.compile('v .*')
-    vn_re = re.compile('vn .*')
-    f_re = re.compile('f .*')
-
-    v_lines = v_re.findall(r)
-    vn_lines = vn_re.findall(r)
-    f_lines = f_re.findall(r)
-
-    # Read vertices
-    vertices = list()
-    for line in v_lines:
-        elements = line.split()[1:]
-        # for el in elements:
-        x = float(elements[0])
-        y = float(elements[1])
-        z = float(elements[2])
-
-        # print(x, y, z)
-
-        if x > x_max:
-            x_max = x
-        if x < x_min:
-            x_min = x
-        if y > y_max:
-            y_max = y
-        if y < y_min:
-            y_min = y
-        if z > z_max:
-            z_max = z
-        if z < z_min:
-            z_min = z
-
-        vertices.append(x)
-        vertices.append(y)
-        vertices.append(z)
-
-
-
-
-    data['v'] = np.asarray(vertices, dtype='float32')
-    max_v = np.max(data['v'])
-    min_v = np.min(data['v'])
-    range_y = max_v - min_v
-
-
-    # Read vertices normal
-    vertices_n = list()
-    for line in vn_lines:
-        elements = line.split()[1:]
-        for el in elements:
-            vertices_n.append(float(el))
-
-    data['vn'] = np.asarray(vertices_n, dtype='float32')
-
-
-    # Read faces
-    v_list = list()
-    vt_list = list()
-    vn_list = list()
-
-    for line in f_lines:
-        elements = line.split()[1:]
-        for el in elements:
-            if '/' in el:
-                v = el.split('/')[0]
-                vt = el.split('/')[1]
-                vn = el.split('/')[2]
-            
-                if v:
-                    v_list.append(int(v)-1)
-                if vt:
-                    vt_list.append(int(vt)-1)
-                if vn:
-                    vn_list.append(int(vn)-1)
-            
-            else: v_list.append(int(el))
-            
-    
-    count_vertices = len(v_list)
-    data['f_v'] = np.asarray(v_list, dtype='uint32')
-    data['f_vt'] = np.asarray(vt_list, dtype='uint32')
-    data['f_vn'] = np.asarray(vn_list, dtype='uint32')
-
-    return data
-
 
 def initData(filepath):
 
-    global VAO
+    global VAO, box_limits, count_vertices, M
     
-    data = read_obj(filepath)
-    vertex = {}
+    file_data = io.read_obj(filepath)
 
-    vertices = data['v']
-    normals = data['vn']
-    indices = data['f_v']
+    [x_center, y_center, z_center] = file_data['center']
+    box_limits = file_data['vertices']['box']
+    vertices = file_data['vertices']['v']
+    indices = file_data['faces']['v']
+    count_vertices = file_data['faces']['n']
+
+    print(x_center, y_center, z_center)
+
+    # Define Initial Matrix
+    T = ut.matTranslate(-x_center, -y_center, -z_center)
+    M = np.matmul(T,M)
 
     # Vertex array.
     VAO = gl.glGenVertexArrays(1)
@@ -382,11 +306,6 @@ def initData(filepath):
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, VBO)
     gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
     
-    # Normals 
-    # NBO = gl.glGenBuffers(1)
-    # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, NBO)
-    # gl.glBufferData(gl.GL_ARRAY_BUFFER, normals.nbytes, normals, gl.GL_STATIC_DRAW)
-
     # Elements 
     EBO = gl.glGenBuffers(1)
     gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, EBO)
@@ -394,13 +313,13 @@ def initData(filepath):
     
 
     # Set attributes.
-    # gl.glEnableClientState(gl.GL_VERTEX_ARRAY)
     gl.glEnableVertexAttribArray(0)
     gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
 
 
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
+    # gl.glEnable(gl.GL_CULL_FACE)
     
     # Unbind Vertex Array Object.
     gl.glBindVertexArray(0)
