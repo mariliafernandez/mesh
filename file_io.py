@@ -1,4 +1,3 @@
-
 import sys
 import re
 import numpy as np
@@ -6,47 +5,81 @@ import numpy as np
 
 def read_obj(filepath):
 
-    data = dict()
-
     with open(filepath) as obj:
         r = obj.read()
 
-    vertices = read_vertices(r)
+    position_data = read_position(r)
+    positions = position_data['v']
+    normals = read_normal(r)
     faces = read_faces(r)
 
-    x_center, y_center, z_center = find_center(vertices['box'])
+    x, y, z = find_center(position_data['box'])
+    vertex_data = build_vertex_input(positions, faces, normals).flatten()
 
     file_data = {
-        "vertices":vertices,
-        "faces":faces,
-        "center":[x_center, y_center, z_center]
-
+        "vertex":vertex_data,
+        "v":positions,
+        "n":normals,
+        "f":faces,
+        "center":[x, y, z],
+        "bbox": position_data['box'],
+        "normal_data":len(normals) > 0
     }
-
-    # T = ut.matTranslate(-x_center, -y_center, -z_center)
-    # M = np.matmul(T,M)
 
     return file_data
 
+
+def build_vertex_input(positions, faces, normals):
+    vertex_pos = list()
+
+    if len(normals) > 0:
+        for v, n in zip(faces['v'], faces['n']):
+            vertex_pos.append(positions[v])
+            vertex_pos.append(normals[n])
+
+    else:
+        for v in faces['v']:
+            vertex_pos.append(positions[v])
+
+
+    return np.asarray(vertex_pos, dtype='float32')
+
+
 def read_normal(r):
-    vertices_n = list()
+    normal = list()
     vn_re = re.compile('vn .*')
     vn_lines = vn_re.findall(r)
 
     for line in vn_lines:
 
         elements = line.split()[1:]
+        normal_x = float(elements[0])
+        normal_y = float(elements[1])
+        normal_z = float(elements[2])
 
-        for el in elements:
-            vertices_n.append(float(el))
-
-    return np.asarray(vertices_n, dtype='float32')
-
-def normalize(v):
-    return v/np.max(v)
+        normal.append([normal_x, normal_y, normal_z])
+    
+    return normal
 
 
-def read_vertices(r):
+def read_texture(r):
+    texture = list()
+    vt_re = re.compile('vt .*')
+    vt_lines = vt_re.findall(r)
+
+    for line in vt_lines:
+
+        elements = line.split()[1:]
+
+        tex_x = float(elements[0])
+        tex_y = float(elements[1])
+
+        texture.append([tex_x, tex_y])
+
+    return texture
+
+
+def read_position(r):
     global x_min, y_min, z_min, x_max, y_max, z_max
 
     # Limits of obj file
@@ -58,7 +91,7 @@ def read_vertices(r):
     y_max = sys.float_info.min
     z_max = sys.float_info.min
 
-    vertices = list()
+    position = list()
     v_re = re.compile('v .*')
     v_lines = v_re.findall(r)
 
@@ -70,9 +103,7 @@ def read_vertices(r):
         y = float(elements[1])
         z = float(elements[2])
 
-        vertices.append(x)
-        vertices.append(y)
-        vertices.append(z)
+        position.append([x, y, z])
 
         if x > x_max:
             x_max = x
@@ -87,23 +118,22 @@ def read_vertices(r):
         if z < z_min:
             z_min = z
 
-    vertices = np.asarray(vertices, dtype='float32')
-    v_max = np.max(vertices)
-    vertices = vertices/v_max
+    # Normalization
+    v_max = np.max(position)
+    position = position/v_max
+    x_min, y_min, z_min, x_max, y_max, z_max = x_min/v_max, y_min/v_max, z_min/v_max, x_max/v_max, y_max/v_max, z_max/v_max
 
-    v_data = {
-        "v": np.asarray(vertices, dtype='float32'),
-        "box": [ x_min/v_max, x_max/v_max, y_min/v_max, y_max/v_max, z_min/v_max, z_max/v_max]
+    position_data = {
+        "v": position,
+        "box": [ x_min, x_max, y_min, y_max, z_min, z_max]
     }
 
-    return v_data
+    return position_data
 
 
 def read_faces(r):
     v_list = list()
-    vt_list = list()
-    vn_list = list()
-    indices = dict()
+    data = {'v':[], 'n':[]}
 
     f_re = re.compile('f .*')
     f_lines = f_re.findall(r)
@@ -115,28 +145,14 @@ def read_faces(r):
         for el in elements:
             if '/' in el:
                 v = el.split('/')[0]
-                # vt = el.split('/')[1]
-                # vn = el.split('/')[2]
-            
-                if v:
-                    v_list.append(int(v)-1)
-                # if vt:
-                #     vt_list.append(int(vt)-1)
-                # if vn:
-                #     vn_list.append(int(vn)-1)
-            
-            else: v_list.append(int(el)-1)
-            
-    
-    count_vertices = len(v_list)
- 
-    data = {
-        "v":np.asarray(v_list, dtype='uint32'),
-        "vt":np.asarray(vt_list, dtype='uint32'),
-        "vn":np.asarray(vn_list, dtype='uint32'),
-        "n":count_vertices
-    }
+                data['v'].append(int(v)-1)
 
+                n = el.split('/')[-1]
+                data['n'].append(int(n)-1)
+            
+            else: 
+                data['v'].append(int(el)-1)
+    
     return data
 
 

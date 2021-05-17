@@ -10,12 +10,11 @@ sys.path.append('../lib/')
 import utils as ut
 from pathlib import Path
 from ctypes import c_void_p
+from time import time
+from PIL import Image
 
-# from . import io
 import file_io as io
-
-# Initial Transform Matrix
-M = np.identity(4, dtype='float32')
+from Object import Object
 
 # Window size
 win_width  = 800
@@ -24,72 +23,101 @@ win_height = 800
 # Field of view
 fovy = np.radians(60)
 
-# Total vertices to be drawn
-count_vertices = 0
-box_limits = None
-center = [0, 0, 0]
-angle_axis = [0, 0, 0]
-
 filepath = None
 program = None
 line = False
 mode = None
-VAO = None
 
+objs = []
 
 ## Vertex shader.
 vertex_code = """
 #version 330 core
-layout (location = 0) in vec3 position;
 
+layout (location = 0) in vec3 position;
+layout (location = 1) in vec3 normal;
+layout (location = 2) in vec2 text_coord;
+
+uniform mat4 inverse;
 uniform mat4 transform;
 uniform mat4 projection;
 uniform mat4 view;
 
+uniform vec3 lightPosition;
+
+out vec3 vNormal;
+out vec3 fragPosition;
+out vec3 LightPos;
+
+out vec2 TexCoord;
+
 void main()
 {
     gl_Position = projection * view * transform * vec4(position, 1.0);
+    fragPosition = vec3(view * transform * vec4(position, 1.0));
+    vNormal = mat3(inverse) * normal;
+    LightPos = vec3(view * vec4(lightPosition, 1.0));
+    TexCoord = text_coord;
 }
 """
 
 ## Fragment shader.
 fragment_code = """
 #version 330 core
-out vec4 FragColor;
+
+in vec3 vNormal;
+in vec3 fragPosition;
+in vec3 LightPos;
+in vec2 TexCoord;
+
+out vec4 fragColor;
+
+uniform vec3 objectColor;
+uniform vec3 lightColor;
+uniform sampler2D ourTexture;
 
 void main()
 {
-    FragColor = vec4(0.7f, 0.7f, 0.7f, 1.0f);
+    float ka = 0.5;
+    vec3 ambient = ka * lightColor;
+
+    float kd = 0.8;
+    vec3 n = normalize(vNormal);
+    vec3 l = normalize(LightPos - fragPosition);
+    
+    float diff = max(dot(n,l), 0.8);
+    vec3 diffuse = kd * diff * lightColor;
+
+    float ks = 0.1;
+    vec3 v = normalize(-fragPosition);
+    vec3 r = reflect(-l, n);
+
+    float spec = pow(max(dot(v, r), 0.0), 8.0);
+    vec3 specular = ks * spec * lightColor;
+
+    vec3 light = (ambient + diffuse + specular) * objectColor;
+  
+    fragColor = vec4(light, 1.0);
+    fragColor = texture(ourTexture, TexCoord) * fragColor;
+
 } 
 """
 
 def display():
 
+    light = objs[1]
+
     gl.glClearColor(0.2, 0.3, 0.3, 1.0)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
-    gl.glBindVertexArray(VAO)
     gl.glUseProgram(program)
-
-    # Transformations
-    loc = gl.glGetUniformLocation(program, "transform")
-    gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, M.transpose())
-
-
-    [x_max, x_min, y_max, y_min, z_max, z_min] = box_limits
-    print(count_vertices)
-    print(M)
-
+    
     # View
-    # z_near = z_min - (y_max-y_min)*2.0/np.tan(fovy)
-    z_near = (y_max-y_min)*3.0/np.tan(fovy) # Funciona pro cubo
+    # [x_max, x_min, y_max, y_min, z_max, z_min] = objs[0].box_limits
+    y_max, y_min = objs[0].box_limits[2], objs[0].box_limits[3]
 
-    print(z_near, z_min)
-    view = ut.matTranslate(0.0, 0.0, z_near) 
-    # view = ut.matTranslate(0.0, 0.0, z_near-1)
-
-    loc = gl.glGetUniformLocation(program, "view")
-    gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
+    z_near = (y_max-y_min)*6.0/np.tan(fovy) 
+    
 
     # Projection
     # projection = ut.matOrtho(x_min*1.5, x_max*1.5, y_min*1.5, y_max*1.5, 0.1, 500)
@@ -97,18 +125,54 @@ def display():
     loc = gl.glGetUniformLocation(program, "projection")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, projection.transpose())
 
+    # Light color.
+    loc = gl.glGetUniformLocation(program, "lightColor")
+    gl.glUniform3f(loc, 1.0, 1.0, 1.0)
 
-    gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
+    # Light position.
+    loc = gl.glGetUniformLocation(program, "lightPosition")
+    gl.glUniform3f(loc, light.x, light.y, light.z)
+    
+    for obj in objs:
+
+        gl.glBindVertexArray(obj.VAO)
+
+        # Transformations
+        loc = gl.glGetUniformLocation(program, "transform")
+        gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, obj.M.transpose())
+
+        view = ut.matTranslate(0.0, 0.0, z_near) 
+
+        loc = gl.glGetUniformLocation(program, "view")
+        gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, view.transpose())
+
+        # Adjust Normals
+        loc = gl.glGetUniformLocation(program, "inverse")
+        gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, np.linalg.inv(view*obj.M).transpose())
+
+        # Object color.
+        loc = gl.glGetUniformLocation(program, "objectColor")
+        gl.glUniform3f(loc, obj.color[0], obj.color[1], obj.color[2])
+        
+
+        # gl.glBindTexture(gl.GL_TEXTURE_2D, obj.VTO)
+
+        # gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, obj.n_vertices)
+        gl.glBindVertexArray(0)
+
 
     glut.glutSwapBuffers()
 
 
 def reshape(width,height):
+    global win_width, win_height
 
     win_width = width
     win_height = height
     gl.glViewport(0, 0, width, height)
     glut.glutPostRedisplay()
+
 
 def switch_view(line):
     if line:
@@ -119,11 +183,11 @@ def switch_view(line):
     glut.glutPostRedisplay()
 
 
-def special_keyboard(key, x_mouse, y_mouse):
+def special_keyboard(key, mouse_x, mouse_y):
     handle_transform(key)
 
 
-def keyboard(key, x_mouse, y_mouse):
+def keyboard(key, mouse_x, mouse_y):
     
     global type_primitive, line, mode
     
@@ -142,201 +206,127 @@ def keyboard(key, x_mouse, y_mouse):
     else:
         handle_transform(key)
 
-    
 
 def handle_transform(key_pressed):
-    x_max, y_max, z_max = box_limits[1], box_limits[3], box_limits[5]
+    obj = objs[0]
+    x_max, y_max, z_max = obj.box_limits[1], obj.box_limits[3], obj.box_limits[5]
     unit = 0.01*max(x_max, y_max, z_max)
 
     if mode == 'translate':
         if key_pressed ==  glut.GLUT_KEY_UP:
-            translate(0.0, unit, 0.0)
+            obj.translate(0.0, unit, 0.0)
         elif key_pressed == glut.GLUT_KEY_DOWN:
-            translate(0.0, -unit, 0.0)
+            obj.translate(0.0, -unit, 0.0)
         elif key_pressed == glut.GLUT_KEY_RIGHT:
-            translate(unit, 0.0, 0.0)
+            obj.translate(unit, 0.0, 0.0)
         elif key_pressed == glut.GLUT_KEY_LEFT:
-            translate(-unit, 0.0, 0.0)
+            obj.translate(-unit, 0.0, 0.0)
         elif key_pressed == b'a':
-            translate(0.0, 0.0, unit)
+            obj.translate(0.0, 0.0, unit)
         elif key_pressed == b'd':
-            translate(0.0, 0.0, -unit)
+            obj.translate(0.0, 0.0, -unit)
 
     elif mode == 'rotate':
         angle = 1.0
         if key_pressed == glut.GLUT_KEY_UP:
-            rotate('x', angle)
+            obj.rotate('x', angle)
         elif key_pressed == glut.GLUT_KEY_DOWN:
-            rotate('x', -angle)
+            obj.rotate('x', -angle)
         elif key_pressed == glut.GLUT_KEY_RIGHT:
-            rotate('y', angle)
+            obj.rotate('y', angle)
         elif key_pressed == glut.GLUT_KEY_LEFT:
-            rotate('y', -angle)
+            obj.rotate('y', -angle)
         elif key_pressed == b'a':
-            rotate('z', angle)
+            obj.rotate('z', angle)
         elif key_pressed == b'd':
-            rotate('z', -angle)
+            obj.rotate('z', -angle)
     
     elif mode == 'scale':
         coeff=0.01
 
         if key_pressed == glut.GLUT_KEY_UP:
-            scale(1, 1+coeff, 1)
+            obj.scale(1, 1+coeff, 1)
         elif key_pressed == glut.GLUT_KEY_DOWN:
-            scale(1, 1-coeff, 1)
+            obj.scale(1, 1-coeff, 1)
         elif key_pressed == glut.GLUT_KEY_RIGHT:
-            scale(1+coeff, 1, 1)
+            obj.scale(1+coeff, 1, 1)
         elif key_pressed == glut.GLUT_KEY_LEFT:
-            scale(1-coeff, 1, 1)
+            obj.scale(1-coeff, 1, 1)
         elif key_pressed == b'a':
-            scale(1, 1, 1+coeff)
+            obj.scale(1, 1, 1+coeff)
         elif key_pressed == b'd':
-            scale(1, 1, 1-coeff)
+            obj.scale(1, 1, 1-coeff)
 
     glut.glutPostRedisplay()
 
 
-def translate(x, y, z):
-    global M, center
+def idle():
+    global objs
 
-    T = ut.matTranslate(x, y, z)
-    M = np.matmul(T,M)
-    
-    center[0] += x
-    center[1] += y
-    center[2] += z
+    light = objs[1]
 
+    x = 2*np.sin(time())
+    z = 2*np.cos(time())
 
-def scale(x, y, z):
-    global M
-    x_center, y_center, z_center = center[0], center[1], center[2]
-
-    translate(-x_center, -y_center, -z_center)
-
-    S = ut.matScale(x, y, z)
-    M = np.matmul(S,M)
-
-    translate( x_center, y_center, z_center)
-
-
-
-def rotate(axis, angle=10.0):
-    global M
-    x, y, z = center[0], center[1], center[2]
-
-    translate(-x, -y, -z)
-    
-    if axis == 'x':
-        R = ut.matRotateX(np.radians(angle))
-        angle_axis[0] += angle
-    elif axis == 'y':
-        R = ut.matRotateY(np.radians(angle))
-        angle_axis[1] += angle
-    elif axis == 'z':
-        R = ut.matRotateZ(np.radians(angle))
-        angle_axis[2] += angle
-
-    M = np.matmul(R,M)
-
-    translate(x, y, z)
-
-
-def define_cube():
-    vertices = np.array([
-        # coordinate        color
-        -0.5, -0.5, 0.5,    1.0, 0.68, 0.74,
-         0.5, -0.5, 0.5,    0.63, 0.91, 0.9,
-         0.5,  0.5, 0.5,    0.98, 0.91, 0.78,
-        -0.5,  0.5, 0.5,    0.71, 0.97, 0.78,
-
-        -0.5, -0.5, -0.5,   0.63, 0.91, 0.9,
-         0.5, -0.5, -0.5,   1.0, 0.68, 0.74,
-         0.5,  0.5, -0.5,   0.98, 0.91, 0.78,
-        -0.5,  0.5, -0.5,   0.71, 0.97, 0.78,
-    ], dtype='float32')
-
-    indices = np.array([
-        # Front
-        0, 1, 2,    # First Triangle
-        2, 3, 0,    # Second Triangle
-
-        # Back
-        4, 5, 6,
-        6, 7, 4,
-
-        # Left
-        0, 3, 7,
-        7, 4, 0,
-
-        # Right
-        1, 5, 6,
-        6, 2, 1,
-
-        # Top
-        2, 6, 7,
-        7, 3, 2,
-
-        # Bottom
-        0, 1, 5,
-        5, 4, 0,
-
-    ], dtype="uint32")
-
-    return vertices
+    light.translate(x-light.x, 0, z-light.z)
+    glut.glutPostRedisplay()
 
 
 def initData(filepath):
 
-    global VAO, box_limits, count_vertices, M, center
+    global objs
     
-    file_data = io.read_obj(filepath)
+    obj_data = io.read_obj(filepath)
+    light_data = io.read_obj("files/octaedro.obj")
 
-    center = file_data['center']
-    [x, y, z] = center 
+    obj = Object(obj_data, 0.7, 0.2, 0.2)
+    light = Object(light_data, 0.2, 0.2, 0.9)
 
-    print(center)
+    castle_txt = texture("texture/castle.jpg")
+    blob_txt = texture("texture/blob.png")
 
-    box_limits = file_data['vertices']['box']
-    vertices = file_data['vertices']['v']
-    indices = file_data['faces']['v']
-    count_vertices = file_data['faces']['n']
+    obj.init_data(castle_txt)
+    light.init_data(blob_txt)
 
-    # Define Initial Matrix
-    T = ut.matTranslate(-x, -y, -z)
-    M = np.matmul(T,M)
+    objs = [obj, light]
 
-    center[0] -= x
-    center[1] -= y
-    center[2] -= z
+    # Place objects in center
+    obj.translate(-obj.x, -obj.y, -obj.z)
+    light.translate(-light.x, 0.5-light.y, -light.z)
+    light.scale(0.3, 0.3, 0.3)
 
-
-    # Vertex array.
-    VAO = gl.glGenVertexArrays(1)
-    gl.glBindVertexArray(VAO)
-
-    # Vertices 
-    VBO = gl.glGenBuffers(1)
-    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, VBO)
-    gl.glBufferData(gl.GL_ARRAY_BUFFER, vertices.nbytes, vertices, gl.GL_STATIC_DRAW)
     
-    # Elements 
-    EBO = gl.glGenBuffers(1)
-    gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, EBO)
-    gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, gl.GL_STATIC_DRAW)
-    
-
-    # Set attributes.
-    gl.glEnableVertexAttribArray(0)
-    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
-
-
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
-    # gl.glEnable(gl.GL_CULL_FACE)
+
+
+    ###############################################################
+    # Texture Parameters
+    # VTO = gl.glGenTextures(1)
+    # gl.glBindTexture(gl.GL_TEXTURE_2D, VTO)
     
+    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)	
+    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
+    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+
+    # gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB, im_width, im_height, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, data)
+    # gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
+
+    ################################################################
+
     # Unbind Vertex Array Object.
     gl.glBindVertexArray(0)
 
+
+def texture(filename):
+
+    with Image.open(filename) as im:
+        v = np.asarray(im, dtype='float32')
+        im_with = im.width
+        im_heigh = im.height
+
+    return {'data':v, 'height':im_heigh, 'width':im_with } 
 
 
 def initShaders():
@@ -361,8 +351,10 @@ def main(filepath):
     glut.glutDisplayFunc(display)
     glut.glutKeyboardFunc(keyboard)
     glut.glutSpecialFunc(special_keyboard)
+    glut.glutIdleFunc(idle)
 
     glut.glutMainLoop()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
