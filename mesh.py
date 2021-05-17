@@ -36,7 +36,7 @@ vertex_code = """
 
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
-layout (location = 2) in vec2 text_coord;
+//layout (location = 2) in vec2 text_coord;
 
 uniform mat4 inverse;
 uniform mat4 transform;
@@ -49,7 +49,7 @@ out vec3 vNormal;
 out vec3 fragPosition;
 out vec3 LightPos;
 
-out vec2 TexCoord;
+//out vec2 TexCoord;
 
 void main()
 {
@@ -57,7 +57,7 @@ void main()
     fragPosition = vec3(view * transform * vec4(position, 1.0));
     vNormal = mat3(inverse) * normal;
     LightPos = vec3(view * vec4(lightPosition, 1.0));
-    TexCoord = text_coord;
+    //TexCoord = text_coord;
 }
 """
 
@@ -68,13 +68,13 @@ fragment_code = """
 in vec3 vNormal;
 in vec3 fragPosition;
 in vec3 LightPos;
-in vec2 TexCoord;
+//in vec2 TexCoord;
 
 out vec4 fragColor;
 
 uniform vec3 objectColor;
 uniform vec3 lightColor;
-uniform sampler2D ourTexture;
+//uniform sampler2D ourTexture;
 
 void main()
 {
@@ -98,7 +98,7 @@ void main()
     vec3 light = (ambient + diffuse + specular) * objectColor;
   
     fragColor = vec4(light, 1.0);
-    fragColor = texture(ourTexture, TexCoord) * fragColor;
+    //fragColor = texture(ourTexture, TexCoord) * fragColor;
 
 } 
 """
@@ -160,6 +160,7 @@ def display():
         # gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, obj.n_vertices)
         gl.glBindVertexArray(0)
+
 
 
     glut.glutSwapBuffers()
@@ -279,14 +280,16 @@ def initData(filepath):
     obj_data = io.read_obj(filepath)
     light_data = io.read_obj("files/octaedro.obj")
 
+    # print(obj_data)
+
     obj = Object(obj_data, 0.7, 0.2, 0.2)
     light = Object(light_data, 0.2, 0.2, 0.9)
 
-    castle_txt = texture("texture/castle.jpg")
-    blob_txt = texture("texture/blob.png")
+    # castle_txt = texture("texture/castle.jpg")
+    # blob_txt = texture("texture/blob.png")
 
-    obj.init_data(castle_txt)
-    light.init_data(blob_txt)
+    obj.create()
+    light.create()
 
     objs = [obj, light]
 
@@ -298,22 +301,6 @@ def initData(filepath):
     
     gl.glEnable(gl.GL_DEPTH_TEST)
     gl.glDepthFunc(gl.GL_LESS)
-
-
-    ###############################################################
-    # Texture Parameters
-    # VTO = gl.glGenTextures(1)
-    # gl.glBindTexture(gl.GL_TEXTURE_2D, VTO)
-    
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)	
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-
-    # gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB, im_width, im_height, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, data)
-    # gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
-
-    ################################################################
 
     # Unbind Vertex Array Object.
     gl.glBindVertexArray(0)

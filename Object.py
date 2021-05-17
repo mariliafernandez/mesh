@@ -9,10 +9,11 @@ class Object:
   def __init__(self, file_data, color_r, color_g, color_b):
     self.n_vertices = len(file_data['vertex'])
     self.box_limits = file_data['bbox']
-    # self.vertex = file_data['vertex']
+
     self.vertex_position = file_data['v']
     self.vertex_normal = file_data['n']
     self.vertex_faces = file_data['f']
+    self.vertex_array = None
 
     self.normal_flag = file_data['normal_data']
     
@@ -29,6 +30,10 @@ class Object:
     self.VTO = None
 
 
+  def create(self):
+    self.build_vertex_array()
+    self.init_data()
+
 
   def init_data(self, txt_data=None):
 
@@ -43,17 +48,17 @@ class Object:
     # Vertices 
     self.VBO = gl.glGenBuffers(1)
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.VBO)
-    gl.glBufferData(gl.GL_ARRAY_BUFFER, self.vertex_position.nbytes, self.vertex_position, gl.GL_STATIC_DRAW)
+    gl.glBufferData(gl.GL_ARRAY_BUFFER, self.vertex_array.nbytes, self.vertex_array, gl.GL_STATIC_DRAW)
 
     ### Set attributes
 
     if self.normal_flag:
       # Position
       gl.glEnableVertexAttribArray(0)
-      gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*self.vertex_position.itemsize, None)
+      gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*self.vertex_array.itemsize, None)
       # Normal
       gl.glEnableVertexAttribArray(1)
-      gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*self.vertex_position.itemsize, c_void_p(3*self.vertex_position.itemsize))
+      gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 6*self.vertex_array.itemsize, c_void_p(3*self.vertex_array.itemsize))
  
     else:
       # Position
@@ -141,17 +146,16 @@ class Object:
     self.translate(x, y, z)
 
 
-  def build_vertex_array(positions, faces, normals, texture):
+  def build_vertex_array(self):
     vertex_pos = list()
 
-    if len(normals) > 0:
-        for v, n in zip(faces['v'], faces['n']):
-            vertex_pos.append(positions[v])
-            vertex_pos.append(normals[n])
+    if len(self.vertex_normal) > 0:
+        for v, n in zip(self.vertex_faces['v'], self.vertex_faces['n']):
+            vertex_pos.append(self.vertex_position[v])
+            vertex_pos.append(self.vertex_normal[n])
 
     else:
-        for v in faces['v']:
-            vertex_pos.append(positions[v])
+        for v in self.vertex_faces['v']:
+            vertex_pos.append(self.vertex_position[v])
 
-
-    return np.asarray(vertex_pos, dtype='float32')
+    self.vertex_array = np.asarray(vertex_pos, dtype='float32')

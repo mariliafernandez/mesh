@@ -41,7 +41,6 @@ def build_vertex_input(positions, faces, normals):
         for v in faces['v']:
             vertex_pos.append(positions[v])
 
-
     return np.asarray(vertex_pos, dtype='float32')
 
 
