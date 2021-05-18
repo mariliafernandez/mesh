@@ -316,7 +316,7 @@ def initData(filepath):
     moon = Texture()
     moon.load("texture/rock.jpg")
 
-    obj.create(moon)
+    obj.create(mars)
     light.create(moon)
 
     objs = [obj, light]

@@ -12,9 +12,17 @@ class Texture:
 
     with Image.open(filepath) as im:
       if im.width % 4 != 0:
-        area = (0,0,im.width-(im.width%4),im.width-(im.width%4))
+        w = im.width-(im.width%4)
+        area = (0,0,w,w)
+        im = im.crop(area)
+      
+      if im.width != im.height:
+        w = im.width
+        area = (0,0,w,w)
         im = im.crop(area)
 
+      print(im.width)
+      print(im.height)
       self.data = np.asarray(im, dtype='uint8')
       self.width = im.width
       self.height = im.height
