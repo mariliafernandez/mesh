@@ -14,10 +14,10 @@ def read_obj(filepath):
     faces = read_faces(r)
 
     x, y, z = find_center(position_data['box'])
-    vertex_data = build_vertex_input(positions, faces, normals).flatten()
+    # vertex_data = build_vertex_input(positions, faces, normals).flatten()
 
     file_data = {
-        "vertex":vertex_data,
+        # "vertex":vertex_data,
         "v":positions,
         "n":normals,
         "f":faces,

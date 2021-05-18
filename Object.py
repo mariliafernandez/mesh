@@ -3,16 +3,16 @@ import OpenGL.GLUT as glut
 from ctypes import c_void_p
 import numpy as np
 import utils as ut
+from pathlib import Path
+from PIL import Image
 
 class Object:
 
-  def __init__(self, file_data, color_r, color_g, color_b):
-    self.n_vertices = len(file_data['vertex'])
-    self.box_limits = file_data['bbox']
+  def __init__(self, file_data, color):
+    self.file_data = file_data
 
-    self.vertex_position = file_data['v']
-    self.vertex_normal = file_data['n']
-    self.vertex_faces = file_data['f']
+    self.n_vertices = None
+    self.box_limits = file_data['bbox']
     self.vertex_array = None
 
     self.normal_flag = file_data['normal_data']
@@ -22,32 +22,32 @@ class Object:
     self.z = file_data['center'][2]
 
     self.M = np.identity(4, dtype='float32')
-    self.color = [color_r, color_g, color_b]
+    self.color = color
     self.angle_axis = [0, 0, 0]
+
+    self.texture = None
 
     self.VAO = None
     self.VBO = None
     self.VTO = None
 
 
-  def create(self):
+  def create(self, texture_obj=None):
     self.build_vertex_array()
-    self.init_data()
+    self.init_data(texture_obj)
 
 
-  def init_data(self, txt_data=None):
-
-    # texture_height = txt_data['height']
-    # texture_width = txt_data['width']
-    # texture_array = txt_data['data']
+  def init_data(self, texture=None):
 
     # Vertex array.
     self.VAO = gl.glGenVertexArrays(1)
     gl.glBindVertexArray(self.VAO)
 
+
     # Vertices 
     self.VBO = gl.glGenBuffers(1)
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.VBO)
+
     gl.glBufferData(gl.GL_ARRAY_BUFFER, self.vertex_array.nbytes, self.vertex_array, gl.GL_STATIC_DRAW)
 
     ### Set attributes
@@ -66,43 +66,21 @@ class Object:
       gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
 
 
-    # Texture
-    # gl.glVertexAttribPointer(2, 2, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
-    # gl.glEnableVertexAttribArray(2)
+    self.VTO = gl.glGenTextures(1)
+    gl.glBindTexture(gl.GL_TEXTURE_CUBE_MAP, self.VTO)
 
-    # self.VTO = gl.glGenTextures(1)
-
-    # gl.glBindTexture(gl.GL_TEXTURE_2D, self.VTO)
+    for i in range(6):
+      # print(texture)
+      gl.glTexImage2D(gl.GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.GL_RGB, texture.width, texture.height, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, texture.data)
     
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)	
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-    # gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+    gl.glTexParameteri(gl.GL_TEXTURE_CUBE_MAP, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+    gl.glTexParameteri(gl.GL_TEXTURE_CUBE_MAP, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+    gl.glTexParameteri(gl.GL_TEXTURE_CUBE_MAP, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+    gl.glTexParameteri(gl.GL_TEXTURE_CUBE_MAP, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+    gl.glTexParameteri(gl.GL_TEXTURE_CUBE_MAP, gl.GL_TEXTURE_WRAP_R, gl.GL_CLAMP_TO_EDGE)  
 
-    # gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB, texture_width, texture_height, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, texture_array)
-    # gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
 
     gl.glBindVertexArray(0)
-
-
-  def set_texture(self, txt_data):
-
-    height = txt_data['height']
-    width = txt_data['width']
-    array = txt_data['data']
-
-    self.VTO = gl.glGenTextures(1)
-
-    gl.glBindVertexArray(self.VAO)
-    gl.glBindTexture(gl.GL_TEXTURE_2D, self.VTO)
-    
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)	
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-    gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-
-    gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB, width, height, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, array)
-    gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
 
 
   def translate(self, x, y, z):
@@ -147,15 +125,38 @@ class Object:
 
 
   def build_vertex_array(self):
-    vertex_pos = list()
+    vertex_list = list()
 
-    if len(self.vertex_normal) > 0:
-        for v, n in zip(self.vertex_faces['v'], self.vertex_faces['n']):
-            vertex_pos.append(self.vertex_position[v])
-            vertex_pos.append(self.vertex_normal[n])
+    vertex_position = self.file_data['v']
+    vertex_normal = self.file_data['n']
+    vertex_faces = self.file_data['f']
 
+    # Tem normal
+    if len(vertex_normal) > 0:
+
+      # vn indexado por face
+      if len(vertex_faces['n']) > 0:
+        for v, n in zip(vertex_faces['v'], vertex_faces['n']):
+          vertex_list.append(vertex_position[v])
+          vertex_list.append(vertex_normal[n])
+
+        self.n_vertices = len(vertex_faces['v']*3)
+        
+
+      # um vn por vértice
+      else:
+        for v, n in zip(vertex_position, vertex_normal):
+          vertex_list.append(v)
+          vertex_list.append(n) 
+
+        self.n_vertices = len(vertex_position)
+
+    # Não tem normal
     else:
-        for v in self.vertex_faces['v']:
-            vertex_pos.append(self.vertex_position[v])
+      for v in vertex_faces['v']:
+        vertex_list.append(vertex_position[v])
 
-    self.vertex_array = np.asarray(vertex_pos, dtype='float32')
+      self.n_vertices = len(vertex_list)
+
+    self.vertex_array = np.asarray(vertex_list, dtype='float32').flatten()
+

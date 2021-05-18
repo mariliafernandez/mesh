@@ -2,6 +2,7 @@
 
 import sys
 import ctypes
+from typing import Text
 import numpy as np
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
@@ -15,6 +16,7 @@ from PIL import Image
 
 import file_io as io
 from Object import Object
+from Texture import Texture
 
 # Window size
 win_width  = 800
@@ -30,13 +32,36 @@ mode = None
 
 objs = []
 
+vertex_code_cubemap = """
+  #version 330 core
+  layout (location = 0) in vec3 aPos;
+  out vec3 TexCoords;
+  uniform mat4 projection;
+  uniform mat4 view;
+  void main()
+  {
+    TexCoords = aPos;
+    gl_Position = projection * view * vec4(aPos, 1.0);
+  }  
+"""
+
+fragment_code_cubemap = """
+  #version 330 core
+  out vec4 FragColor;
+  in vec3 TexCoords;
+  uniform samplerCube skybox;
+  void main()
+  {    
+    FragColor = texture(skybox, TexCoords);
+  }
+"""
+
 ## Vertex shader.
 vertex_code = """
 #version 330 core
 
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
-//layout (location = 2) in vec2 text_coord;
 
 uniform mat4 inverse;
 uniform mat4 transform;
@@ -48,8 +73,7 @@ uniform vec3 lightPosition;
 out vec3 vNormal;
 out vec3 fragPosition;
 out vec3 LightPos;
-
-//out vec2 TexCoord;
+out vec3 TexCoords;
 
 void main()
 {
@@ -57,7 +81,7 @@ void main()
     fragPosition = vec3(view * transform * vec4(position, 1.0));
     vNormal = mat3(inverse) * normal;
     LightPos = vec3(view * vec4(lightPosition, 1.0));
-    //TexCoord = text_coord;
+    TexCoords = position;
 }
 """
 
@@ -68,13 +92,13 @@ fragment_code = """
 in vec3 vNormal;
 in vec3 fragPosition;
 in vec3 LightPos;
-//in vec2 TexCoord;
+in vec3 TexCoords;
 
 out vec4 fragColor;
 
 uniform vec3 objectColor;
 uniform vec3 lightColor;
-//uniform sampler2D ourTexture;
+uniform samplerCube cubemap;
 
 void main()
 {
@@ -98,7 +122,7 @@ void main()
     vec3 light = (ambient + diffuse + specular) * objectColor;
   
     fragColor = vec4(light, 1.0);
-    //fragColor = texture(ourTexture, TexCoord) * fragColor;
+    fragColor = texture(cubemap, TexCoords) * fragColor;
 
 } 
 """
@@ -110,6 +134,7 @@ def display():
     gl.glClearColor(0.2, 0.3, 0.3, 1.0)
     gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 
+    # gl.glDepthMask(gl.GL_FALSE)
     gl.glUseProgram(program)
     
     # View
@@ -122,6 +147,7 @@ def display():
     # Projection
     # projection = ut.matOrtho(x_min*1.5, x_max*1.5, y_min*1.5, y_max*1.5, 0.1, 500)
     projection = ut.matPerspective(fovy, win_width/win_height, 0.1, 300)
+
     loc = gl.glGetUniformLocation(program, "projection")
     gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, projection.transpose())
 
@@ -155,7 +181,7 @@ def display():
         gl.glUniform3f(loc, obj.color[0], obj.color[1], obj.color[2])
         
 
-        # gl.glBindTexture(gl.GL_TEXTURE_2D, obj.VTO)
+        gl.glBindTexture(gl.GL_TEXTURE_CUBE_MAP, obj.VTO)
 
         # gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, obj.n_vertices)
@@ -266,8 +292,8 @@ def idle():
 
     light = objs[1]
 
-    x = 2*np.sin(time())
-    z = 2*np.cos(time())
+    x = 2*np.sin(time()/4)
+    z = 2*np.cos(time()/4)
 
     light.translate(x-light.x, 0, z-light.z)
     glut.glutPostRedisplay()
@@ -278,18 +304,20 @@ def initData(filepath):
     global objs
     
     obj_data = io.read_obj(filepath)
-    light_data = io.read_obj("files/octaedro.obj")
+    light_data = io.read_obj("files/dodecaedro.obj")
 
-    # print(obj_data)
+    obj = Object(obj_data, [0.7, 0.2, 0.2])
+    light = Object(light_data, [0.9, 0.9, 0.9])
 
-    obj = Object(obj_data, 0.7, 0.2, 0.2)
-    light = Object(light_data, 0.2, 0.2, 0.9)
+    mars = Texture()
+    mars.load("texture/milky_way.jpg")
+    cow = Texture()
+    cow.load("texture/cow.jpg")
+    moon = Texture()
+    moon.load("texture/rock.jpg")
 
-    # castle_txt = texture("texture/castle.jpg")
-    # blob_txt = texture("texture/blob.png")
-
-    obj.create()
-    light.create()
+    obj.create(moon)
+    light.create(moon)
 
     objs = [obj, light]
 
@@ -305,15 +333,6 @@ def initData(filepath):
     # Unbind Vertex Array Object.
     gl.glBindVertexArray(0)
 
-
-def texture(filename):
-
-    with Image.open(filename) as im:
-        v = np.asarray(im, dtype='float32')
-        im_with = im.width
-        im_heigh = im.height
-
-    return {'data':v, 'height':im_heigh, 'width':im_with } 
 
 
 def initShaders():
