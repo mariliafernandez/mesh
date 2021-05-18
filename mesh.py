@@ -311,12 +311,17 @@ def initData(filepath):
 
     mars = Texture()
     mars.load("texture/milky_way.jpg")
+
     cow = Texture()
     cow.load("texture/cow.jpg")
+
     moon = Texture()
     moon.load("texture/rock.jpg")
 
-    obj.create(mars)
+    br = Texture()
+    br.load("texture/br.png")
+
+    obj.create(br)
     light.create(moon)
 
     objs = [obj, light]
