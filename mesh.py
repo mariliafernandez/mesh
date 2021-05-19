@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from Cubemap import Cubemap
 import sys
 import ctypes
 from typing import Text
@@ -17,6 +18,7 @@ from PIL import Image
 import file_io as io
 from Object import Object
 from Texture import Texture
+from Cubemap import Cubemap
 
 # Window size
 win_width  = 800
@@ -31,30 +33,6 @@ line = False
 mode = None
 
 objs = []
-
-vertex_code_cubemap = """
-  #version 330 core
-  layout (location = 0) in vec3 aPos;
-  out vec3 TexCoords;
-  uniform mat4 projection;
-  uniform mat4 view;
-  void main()
-  {
-    TexCoords = aPos;
-    gl_Position = projection * view * vec4(aPos, 1.0);
-  }  
-"""
-
-fragment_code_cubemap = """
-  #version 330 core
-  out vec4 FragColor;
-  in vec3 TexCoords;
-  uniform samplerCube skybox;
-  void main()
-  {    
-    FragColor = texture(skybox, TexCoords);
-  }
-"""
 
 ## Vertex shader.
 vertex_code = """
@@ -102,24 +80,26 @@ uniform samplerCube cubemap;
 
 void main()
 {
-    float ka = 0.5;
+    float ka = 0.1;
     vec3 ambient = ka * lightColor;
 
-    float kd = 0.8;
+    float kd = 1.0;
     vec3 n = normalize(vNormal);
     vec3 l = normalize(LightPos - fragPosition);
     
-    float diff = max(dot(n,l), 0.8);
+    float diff = max(dot(n,l), 0.0);
     vec3 diffuse = kd * diff * lightColor;
 
-    float ks = 0.1;
+    float ks = 0.9;
     vec3 v = normalize(-fragPosition);
     vec3 r = reflect(-l, n);
 
-    float spec = pow(max(dot(v, r), 0.0), 8.0);
+    float spec = pow(max(dot(v, r), 0.0), 128.0);
     vec3 specular = ks * spec * lightColor;
 
     vec3 light = (ambient + diffuse + specular) * objectColor;
+    //vec3 light = (ambient + diffuse + specular);
+
   
     fragColor = vec4(light, 1.0);
     fragColor = texture(cubemap, TexCoords) * fragColor;
@@ -158,6 +138,8 @@ def display():
     # Light position.
     loc = gl.glGetUniformLocation(program, "lightPosition")
     gl.glUniform3f(loc, light.x, light.y, light.z)
+    # gl.glUniform3f(loc, 0.0, 0.0, 0.0)
+
     
     for obj in objs:
 
@@ -181,7 +163,7 @@ def display():
         gl.glUniform3f(loc, obj.color[0], obj.color[1], obj.color[2])
         
 
-        gl.glBindTexture(gl.GL_TEXTURE_CUBE_MAP, obj.VTO)
+        gl.glBindTexture(gl.GL_TEXTURE_CUBE_MAP, obj.texture.VTO)
 
         # gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, obj.n_vertices)
@@ -305,31 +287,47 @@ def initData(filepath):
     
     obj_data = io.read_obj(filepath)
     light_data = io.read_obj("files/dodecaedro.obj")
+    cube_data = io.read_obj("files/cube.obj")
 
-    obj = Object(obj_data, [0.7, 0.2, 0.2])
-    light = Object(light_data, [0.9, 0.9, 0.9])
+    obj = Object(obj_data, [0.5,0.5,0.5])
+    light = Object(light_data)
+    sky = Object(cube_data)
 
-    mars = Texture()
-    mars.load("texture/milky_way.jpg")
+    stars = Texture()
+    stars.load("texture/milky_way.jpg")
 
     cow = Texture()
     cow.load("texture/cow.jpg")
 
     moon = Texture()
-    moon.load("texture/rock.jpg")
+    moon.load("texture/moon.jpg")
 
-    br = Texture()
-    br.load("texture/br.png")
+    earth = Cubemap()
+    earth.load("texture/earth")
 
-    obj.create(br)
+    sun = Texture()
+    sun.load("texture/sun.jpg")
+
+    # for key in earth.faces:
+        # print(f'{key}: {earth.faces[key].filename}')
+
+    sky.create(stars)
+    obj.create(earth)
     light.create(moon)
 
     objs = [obj, light]
+    # objs = [obj]
+
 
     # Place objects in center
+    light.translate(-light.x, -light.y, -light.z)
     obj.translate(-obj.x, -obj.y, -obj.z)
-    light.translate(-light.x, 0.5-light.y, -light.z)
-    light.scale(0.3, 0.3, 0.3)
+    sky.translate(-sky.x, -sky.y, -sky.z-1)
+    
+    light.scale(0.1, 0.1, 0.1)
+    sky.scale(10,10,10)
+    
+    sky.rotate('y', 145)
 
     
     gl.glEnable(gl.GL_DEPTH_TEST)
