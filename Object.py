@@ -63,11 +63,11 @@ class Object:
     else:
       # Position
       gl.glEnableVertexAttribArray(0)
-      gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+      gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 3*self.vertex_array.itemsize, None)
 
-    
-    texture.create()
-    self.texture = texture
+    if texture:
+      texture.create()
+      self.texture = texture
 
     gl.glBindVertexArray(0)
 
@@ -130,10 +130,11 @@ class Object:
           vertex_list.append(vertex_normal[n])
 
         self.n_vertices = len(vertex_faces['v']*3)
-        
 
       # um vn por vértice
       else:
+        print('teste')
+        print(vertex_position[0], vertex_normal[0])
         for v, n in zip(vertex_position, vertex_normal):
           vertex_list.append(v)
           vertex_list.append(n) 
@@ -142,10 +143,41 @@ class Object:
 
     # Não tem normal
     else:
-      for v in vertex_faces['v']:
-        vertex_list.append(vertex_position[v])
+      plain = []
 
-      self.n_vertices = len(vertex_list)
+      for v in vertex_faces['v']:
+        position = vertex_position[v]
+        vertex_list.append(position)
+        
+        # if len(plain) < 3:
+        #   plain.append(position)
+        
+        # else:
+        #   # print(plain)
+        #   r1 = plain[1]-plain[0]
+        #   r2 = plain[2]-plain[0]
+        #   cross = np.cross(r1, r2)
+
+        #   vertex_list.append(cross[0])
+        #   vertex_list.append(cross[1])
+        #   vertex_list.append(cross[2])
+        #   vertex_list.append(cross[0])
+        #   vertex_list.append(cross[1])
+        #   vertex_list.append(cross[2])
+        #   vertex_list.append(cross[0])
+        #   vertex_list.append(cross[1])
+        #   vertex_list.append(cross[2])
+
+        #   plain = [position]
+        
+        # vertex_list.append(position[0])
+        # vertex_list.append(position[1])
+        # vertex_list.append(position[2])
+
+
+      self.n_vertices = len(vertex_position)*6
 
     self.vertex_array = np.asarray(vertex_list, dtype='float32').flatten()
+    # print(len(self.vertex_array))
+    # print(self.vertex_array[0])
 

@@ -32,6 +32,9 @@ program = None
 line = False
 mode = None
 
+texture_on = True
+light_on = True
+
 objs = []
 
 ## Vertex shader.
@@ -77,10 +80,12 @@ out vec4 fragColor;
 uniform vec3 objectColor;
 uniform vec3 lightColor;
 uniform samplerCube cubemap;
+uniform bool light_mode;
+uniform bool texture_mode;
 
 void main()
 {
-    float ka = 0.1;
+    float ka = 0.9;
     vec3 ambient = ka * lightColor;
 
     float kd = 1.0;
@@ -97,17 +102,23 @@ void main()
     float spec = pow(max(dot(v, r), 0.0), 128.0);
     vec3 specular = ks * spec * lightColor;
 
-    vec3 light = (ambient + diffuse + specular) * objectColor;
-    //vec3 light = (ambient + diffuse + specular);
+    fragColor = vec4(objectColor, 1.0);
 
-  
-    fragColor = vec4(light, 1.0);
-    fragColor = texture(cubemap, TexCoords) * fragColor;
+    if(light_mode) {
+        vec3 light = (ambient + diffuse + specular) * objectColor;
+        fragColor = vec4(light, 1.0);
+    }
 
+    if(texture_mode) {
+        fragColor = texture(cubemap, TexCoords) * fragColor;
+    }
+    
 } 
 """
 
 def display():
+
+    global light_on
 
     light = objs[1]
 
@@ -121,7 +132,7 @@ def display():
     # [x_max, x_min, y_max, y_min, z_max, z_min] = objs[0].box_limits
     y_max, y_min = objs[0].box_limits[2], objs[0].box_limits[3]
 
-    z_near = (y_max-y_min)*6.0/np.tan(fovy) 
+    z_near = (y_max-y_min)*5.0/np.tan(fovy) 
     
 
     # Projection
@@ -134,6 +145,7 @@ def display():
     # Light color.
     loc = gl.glGetUniformLocation(program, "lightColor")
     gl.glUniform3f(loc, 1.0, 1.0, 1.0)
+    
 
     # Light position.
     loc = gl.glGetUniformLocation(program, "lightPosition")
@@ -156,13 +168,32 @@ def display():
 
         # Adjust Normals
         loc = gl.glGetUniformLocation(program, "inverse")
-        gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, np.linalg.inv(view*obj.M).transpose())
+        # gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, np.linalg.inv(obj.M).transpose())
+        gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, np.matmul(view, obj.M).transpose())
+
 
         # Object color.
         loc = gl.glGetUniformLocation(program, "objectColor")
         gl.glUniform3f(loc, obj.color[0], obj.color[1], obj.color[2])
-        
 
+
+        loc_light = gl.glGetUniformLocation(program, "light_mode")
+        loc_tex = gl.glGetUniformLocation(program, "texture_mode")
+        
+        if light_on:
+            gl.glUniform1f(loc_light, True)
+        else:
+            gl.glUniform1f(loc_light, False)
+
+        if texture_on:
+            light_on = True
+            gl.glUniform1f(loc_tex, True)
+            gl.glUniform1f(loc_light, True)
+
+        else:
+            gl.glUniform1f(loc_tex, False)
+
+        
         gl.glBindTexture(gl.GL_TEXTURE_CUBE_MAP, obj.texture.VTO)
 
         # gl.glDrawElements(gl.GL_TRIANGLES, count_vertices, gl.GL_UNSIGNED_INT, None)
@@ -198,7 +229,7 @@ def special_keyboard(key, mouse_x, mouse_y):
 
 def keyboard(key, mouse_x, mouse_y):
     
-    global type_primitive, line, mode
+    global type_primitive, line, mode, texture_on, light_on
     
     if key == b't':
         mode = 'translate'
@@ -212,7 +243,19 @@ def keyboard(key, mouse_x, mouse_y):
     elif key == b'v':
         line = not line
         switch_view(line)
+    elif key == b'1':
+        light_on = not light_on
+        print('light')
+        glut.glutPostRedisplay()
+
+
+    elif key == b'2':
+        texture_on = not texture_on
+        print('texture')
+        glut.glutPostRedisplay()
+
     else:
+        # print(key)
         handle_transform(key)
 
 
@@ -278,6 +321,7 @@ def idle():
     z = 2*np.cos(time()/4)
 
     light.translate(x-light.x, 0, z-light.z)
+    objs[0].rotate('y', 0.05)
     glut.glutPostRedisplay()
 
 
@@ -286,12 +330,12 @@ def initData(filepath):
     global objs
     
     obj_data = io.read_obj(filepath)
-    light_data = io.read_obj("files/dodecaedro.obj")
-    cube_data = io.read_obj("files/cube.obj")
+    dodecaedro = io.read_obj("files/dodecaedro.obj")
+    # cube_data = io.read_obj("files/cube.obj")
 
-    obj = Object(obj_data, [0.5,0.5,0.5])
-    light = Object(light_data)
-    sky = Object(cube_data)
+    obj = Object(obj_data, [0.8, 0.8, 0.8])
+    light = Object(dodecaedro, [1.0, 1.0, 1.0])
+    sky = Object(dodecaedro, [0.8, 0.8, 0.8])
 
     stars = Texture()
     stars.load("texture/milky_way.jpg")
@@ -313,10 +357,12 @@ def initData(filepath):
 
     sky.create(stars)
     obj.create(earth)
+    # obj.create()
+
     light.create(moon)
 
-    objs = [obj, light]
-    # objs = [obj]
+    objs = [obj, light, sky]
+    # objs = [obj, light]
 
 
     # Place objects in center

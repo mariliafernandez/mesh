@@ -14,10 +14,8 @@ def read_obj(filepath):
     faces = read_faces(r)
 
     x, y, z = find_center(position_data['box'])
-    # vertex_data = build_vertex_input(positions, faces, normals).flatten()
 
     file_data = {
-        # "vertex":vertex_data,
         "v":positions,
         "n":normals,
         "f":faces,
@@ -28,20 +26,6 @@ def read_obj(filepath):
 
     return file_data
 
-
-def build_vertex_input(positions, faces, normals):
-    vertex_pos = list()
-
-    if len(normals) > 0:
-        for v, n in zip(faces['v'], faces['n']):
-            vertex_pos.append(positions[v])
-            vertex_pos.append(normals[n])
-
-    else:
-        for v in faces['v']:
-            vertex_pos.append(positions[v])
-
-    return np.asarray(vertex_pos, dtype='float32')
 
 
 def read_normal(r):
