@@ -1,12 +1,6 @@
 # Mesh
 Computer Graphics project using OpenGL and Python.
 
-## Run
-``` 
-python mesh.py obj texture
-```
-* obj: .obj file path (triangulate faces)
-* texture: texture file path (square image)
 
 ## Available modes
 ### Transforms
