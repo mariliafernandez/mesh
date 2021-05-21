@@ -88,7 +88,7 @@ void main()
     float ka = 0.9;
     vec3 ambient = ka * lightColor;
 
-    float kd = 1.0;
+    float kd = 0.6;
     vec3 n = normalize(vNormal);
     vec3 l = normalize(LightPos - fragPosition);
     
@@ -99,7 +99,7 @@ void main()
     vec3 v = normalize(-fragPosition);
     vec3 r = reflect(-l, n);
 
-    float spec = pow(max(dot(v, r), 0.0), 128.0);
+    float spec = pow(max(dot(v, r), 0.0), 4.0);
     vec3 specular = ks * spec * lightColor;
 
     fragColor = vec4(objectColor, 1.0);
@@ -160,6 +160,8 @@ def display():
         # Transformations
         loc = gl.glGetUniformLocation(program, "transform")
         gl.glUniformMatrix4fv(loc, 1, gl.GL_FALSE, obj.M.transpose())
+
+        # print(obj.M)
 
         view = ut.matTranslate(0.0, 0.0, z_near) 
 
@@ -234,25 +236,27 @@ def keyboard(key, mouse_x, mouse_y):
     if key == b't':
         mode = 'translate'
         print('translate')
+
     elif key == b'r':
         mode='rotate'
         print('rotate')
+
     elif key == b'e':
         mode='scale'
         print('scale')
+
     elif key == b'v':
         line = not line
         switch_view(line)
-    elif key == b'1':
-        light_on = not light_on
-        print('light')
-        glut.glutPostRedisplay()
 
+    elif key == b'1':
+        print(f'lights {light_on}')
+        light_on = not light_on
+        print(f'lights {light_on}')
 
     elif key == b'2':
         texture_on = not texture_on
         print('texture')
-        glut.glutPostRedisplay()
 
     else:
         # print(key)
@@ -321,42 +325,49 @@ def idle():
     z = 2*np.cos(time()/4)
 
     light.translate(x-light.x, 0, z-light.z)
-    objs[0].rotate('y', 0.05)
+    objs[0].rotate('y', -0.02)
+    objs[1].rotate('y', 0.09)
+    objs[2].rotate('z', 0.03)
+
     glut.glutPostRedisplay()
 
 
-def initData(filepath):
-
+def initData(filepath=None, texpath=None):
     global objs
+
+    if not filepath:
+        filepath=Path("files/sphere.obj")
+    if not texpath:
+        texpath=Path("texture/earth")
+
     
     obj_data = io.read_obj(filepath)
-    dodecaedro = io.read_obj("files/dodecaedro.obj")
+    sphere = io.read_obj("files/sphere.obj")
     # cube_data = io.read_obj("files/cube.obj")
 
-    obj = Object(obj_data, [0.8, 0.8, 0.8])
-    light = Object(dodecaedro, [1.0, 1.0, 1.0])
-    sky = Object(dodecaedro, [0.8, 0.8, 0.8])
+    obj = Object(obj_data, [1.0, 1.0, 1.0])
+    light = Object(sphere, [1.0, 1.0, 1.0])
+    sky = Object(sphere, [0.8, 0.8, 0.8])
 
+    if Path(texpath).is_dir():
+        obj_tex = Cubemap()
+    else:
+        obj_tex = Texture()
+
+    obj_tex.load(Path(texpath))
+    
     stars = Texture()
     stars.load("texture/milky_way.jpg")
-
-    cow = Texture()
-    cow.load("texture/cow.jpg")
 
     moon = Texture()
     moon.load("texture/moon.jpg")
 
-    earth = Cubemap()
-    earth.load("texture/earth")
-
-    sun = Texture()
-    sun.load("texture/sun.jpg")
 
     # for key in earth.faces:
         # print(f'{key}: {earth.faces[key].filename}')
 
     sky.create(stars)
-    obj.create(earth)
+    obj.create(obj_tex)
     # obj.create()
 
     light.create(moon)
@@ -390,7 +401,7 @@ def initShaders():
     program = ut.createShaderProgram(vertex_code, fragment_code)
 
 
-def main(filepath):
+def main(filepath, texpath):
 
     glut.glutInit()
     glut.glutInitContextVersion(3, 3)
@@ -399,7 +410,7 @@ def main(filepath):
     glut.glutInitWindowSize(win_width,win_height)
     glut.glutCreateWindow('M E S H')
 
-    initData(filepath)
+    initData(filepath, texpath)
     initShaders()
 
     glut.glutReshapeFunc(reshape)
@@ -412,14 +423,24 @@ def main(filepath):
 
 
 if __name__ == '__main__':
+    filepath = None
+    texpath = None
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('filepath')
+
+    parser.add_argument('--obj')
+    parser.add_argument('--texture')
+    
     args = parser.parse_args()
 
-    filepath = Path(args.filepath)
-    
-    if filepath.suffix != '.obj' or not filepath.is_file():
-        print('Not a valid .obj file')
-
+    if args.texture:
+        texpath = Path(args.texture)
     else:
-        main(filepath)
+        main(filepath, texpath)
+    
+    if args.obj:
+        filepath = Path(args.obj)
+        if filepath.suffix != '.obj' or not filepath.is_file():
+            print('Not a valid .obj file')
+
+    

@@ -11,6 +11,7 @@ def read_obj(filepath):
     position_data = read_position(r)
     positions = position_data['v']
     normals = read_normal(r)
+
     faces = read_faces(r)
 
     x, y, z = find_center(position_data['box'])
@@ -25,7 +26,6 @@ def read_obj(filepath):
     }
 
     return file_data
-
 
 
 def read_normal(r):
