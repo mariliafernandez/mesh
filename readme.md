@@ -1,6 +1,7 @@
 # Mesh
 Computer Graphics project using OpenGL and Python.
 
+![Text](./files/sample.gif)
 
 ## Available modes
 ### Transforms
